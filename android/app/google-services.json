@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "557569452996",
+    "project_id": "tamangoapp-cb5dc",
+    "storage_bucket": "tamangoapp-cb5dc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:557569452996:android:fe6e8e41da052799505291",
+        "android_client_info": {
+          "package_name": "com.tamangfoods"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBBmsVGZGSZ_kkujv19EF3Coz-hwTvda0o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
