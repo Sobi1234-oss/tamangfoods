@@ -91,13 +91,13 @@ const Homescreen = () => {
           } as Product));
 
           setAllProducts(loadedProducts);
-
+          
           // Separate special and regular products
           const special = loadedProducts.filter(p => p.discountPrice);
           const regular = loadedProducts.filter(p => !p.discountPrice);
-
-          setSpecialProducts(special.slice(0, 4)); // Show first 4 special offers
-          setRegularProducts(regular.slice(0, 10)); // Show first 10 regular products
+          
+          setSpecialProducts(special);
+          setRegularProducts(regular);
         } catch (error) {
           console.error("Error fetching data: ", error);
         } finally {
@@ -108,7 +108,6 @@ const Homescreen = () => {
       fetchData();
     }, [])
   );
-
 
   useEffect(() => {
     let filtered = allProducts;
@@ -125,9 +124,8 @@ const Homescreen = () => {
       );
     }
 
-    setDisplayProducts(filtered.slice(0, 10));
+    setDisplayProducts(filtered);
   }, [searchQuery, selectedCategory, allProducts]);
-
   const handleDeleteProduct = async (productId: string) => {
     setMenuVisible(false);
     Alert.alert(
@@ -174,43 +172,40 @@ const Homescreen = () => {
     setSelectedProduct(product);
     setModalVisible(true);
   };
-  const renderProductItem = ({ item, showMenu = false }: { item: Product, showMenu?: boolean }) => {
+ const renderProductItem = ({ item }: { item: Product }) => {
     return (
       <View style={styles.productCard}>
-        {showMenu && (
-          <View style={styles.menuContainer}>
-            <Menu
-              visible={menuVisible && selectedProductForMenu?.id === item.id}
-              onDismiss={() => setMenuVisible(false)}
-              anchor={
-                <TouchableOpacity
-                  onPress={() => {
-                    setSelectedProductForMenu(item);
-                    setMenuVisible(true);
-                  }}
-                  style={styles.menuButton}
-                >
-                  <Icon name="more-vert" size={24} color="#FF6B6B" />
-                </TouchableOpacity>
-              }
-              contentStyle={styles.menuContent}
-            >
-              <Menu.Item
+        <View style={styles.menuContainer}>
+          <Menu
+            visible={menuVisible && selectedProductForMenu?.id === item.id}
+            onDismiss={() => setMenuVisible(false)}
+            anchor={
+              <TouchableOpacity
                 onPress={() => {
-                  setMenuVisible(false);
-                  handleEditPress(item);
+                  setSelectedProductForMenu(item);
+                  setMenuVisible(true);
                 }}
-                title="Update"
-                titleStyle={{ color: 'skyblue' }}
-              />
-              <Menu.Item
-                onPress={() => handleDeleteProduct(item.id)}
-                title="Delete"
-                titleStyle={{ color: 'red' }}
-              />
-            </Menu>
-          </View>
-        )}
+                style={styles.menuButton}
+              >
+                <Icon name="more-vert" size={24} color="#FF6B6B" />
+              </TouchableOpacity>
+            }
+            contentStyle={styles.menuContent}
+          >
+            <Menu.Item 
+              onPress={() => {
+                setMenuVisible(false);
+                handleEditPress(item);
+              }} 
+              title="Update" 
+            />
+            <Menu.Item 
+              onPress={() => handleDeleteProduct(item.id)} 
+              title="Delete" 
+              titleStyle={{ color: 'red' }}
+            />
+          </Menu>
+        </View>
         <TouchableOpacity
           style={{ flex: 1 }}
           onPress={() => navigation.navigate('ProductDetais', { product: item })}
@@ -223,7 +218,14 @@ const Homescreen = () => {
           <View style={styles.productDetails}>
             <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
             <View style={styles.priceContainer}>
-              <Text style={styles.originalPrice}>Rs {item.price.toFixed(0)}</Text>
+              {item.discountPrice ? (
+                <>
+                  <Text style={styles.discountedPrice}>Rs {item.discountPrice.toFixed(0)}</Text>
+                  <Text style={styles.originalPrice}>Rs {item.price.toFixed(0)}</Text>
+                </>
+              ) : (
+                <Text style={styles.originalPrice}>Rs {item.price.toFixed(0)}</Text>
+              )}
             </View>
             {item.rating && (
               <View style={styles.ratingContainer}>
@@ -269,7 +271,7 @@ const Homescreen = () => {
     );
   }
 
-  return (
+   return (
     <View style={styles.container}>
       <HomeHeader
         navigation={navigation}
@@ -299,66 +301,88 @@ const Homescreen = () => {
             />
           </View>
 
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
-                {selectedCategory === 'all'
-                  ? 'All Products'
-                  : selectedCategory
-                    ? `${categories.find(c => c.id === selectedCategory)?.name || ''} Products`
-                    : searchQuery
-                      ? `Search Results for "${searchQuery}"`
-                      : 'Popular Products'}
-              </Text>
-              <TouchableOpacity
-                style={styles.seeAllButton}
-                onPress={() => navigation.navigate('Products', {
-                  categoryId: selectedCategory,
-                  searchQuery: searchQuery
-                })}
-              >
-                <Text style={styles.seeAllText}>See all</Text>
-                <Icon name="chevron-right" size={18} color="#FF6D42" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.titleUnderline} />
-
-            {displayProducts.filter(p => p.type === 'simple').length > 0 ? (
-              <FlatList
-                data={displayProducts.filter(p => p.type === 'simple')}
-                renderItem={({ item }) => renderProductItem({ item, showMenu: true })}
-                keyExtractor={item => item.id}
-                numColumns={2}
-                columnWrapperStyle={styles.productsRow}
-                scrollEnabled={false}
-              />
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Icon name="search-off" size={50} color="#FF6D42" />
-                <Text style={styles.emptyText}>No simple products found</Text>
-              </View>
-            )}
-          </View>
-
-          {!selectedCategory && !searchQuery && (
+          {/* Show category products when a category is selected */}
+          {selectedCategory && (
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Special Offers</Text>
+                <Text style={styles.sectionTitle}>
+                  {categories.find(c => c.id === selectedCategory)?.name || 'Category'} Products
+                </Text>
+                <TouchableOpacity
+                  style={styles.seeAllButton}
+                  onPress={() => setSelectedCategory(null)}
+                >
+                  <Text style={styles.seeAllText}>Back to all</Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.titleUnderline} />
 
-              <FlatList
-                data={[...allProducts].filter(p => p.discountPrice).slice(0, 4)}
-                renderItem={({ item }) => renderProductItem({ item, showMenu: true })}
-                keyExtractor={item => item.id}
-                numColumns={2}
-                columnWrapperStyle={styles.productsRow}
-                scrollEnabled={false}
-                ListEmptyComponent={
-                  <Text style={styles.emptyText}>No special offers available</Text>
-                }
-              />
+              {displayProducts.length > 0 ? (
+                <FlatList
+                  data={displayProducts}
+                  renderItem={renderProductItem}
+                  keyExtractor={item => item.id}
+                  numColumns={2}
+                  columnWrapperStyle={styles.productsRow}
+                  scrollEnabled={false}
+                />
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Icon name="search-off" size={50} color="#FF6D42" />
+                  <Text style={styles.emptyText}>No products found</Text>
+                </View>
+              )}
             </View>
+          )}
+
+          {/* Show Popular and Special sections when no category is selected */}
+          {!selectedCategory && (
+            <>
+              {/* Popular Products Section */}
+              <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Popular Products</Text>
+                </View>
+                <View style={styles.titleUnderline} />
+
+                {regularProducts.length > 0 ? (
+                  <FlatList
+                    data={regularProducts.slice(0, 10)}
+                    renderItem={renderProductItem}
+                    keyExtractor={item => item.id}
+                    numColumns={2}
+                    columnWrapperStyle={styles.productsRow}
+                    scrollEnabled={false}
+                  />
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <Icon name="search-off" size={50} color="#FF6D42" />
+                    <Text style={styles.emptyText}>No products found</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Special Offers Section */}
+              <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Special Offers</Text>
+                </View>
+                <View style={styles.titleUnderline} />
+
+                {specialProducts.length > 0 ? (
+                  <FlatList
+                    data={specialProducts.slice(0, 4)}
+                    renderItem={renderProductItem}
+                    keyExtractor={item => item.id}
+                    numColumns={2}
+                    columnWrapperStyle={styles.productsRow}
+                    scrollEnabled={false}
+                  />
+                ) : (
+                  <Text style={styles.emptyText}>No special offers available</Text>
+                )}
+              </View>
+            </>
           )}
 
           <EditProductModal
@@ -374,7 +398,6 @@ const Homescreen = () => {
     </View>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
