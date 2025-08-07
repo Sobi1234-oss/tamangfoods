@@ -18,8 +18,7 @@ const Addproduct = ({ navigation }) => {
   const [description, setDescription] = useState('');
   const [productType, setProductType] = useState('simple');
   const [isUploading, setIsUploading] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-const [modalVisible, setModalVisible] = useState(false);
+ 
 
   useEffect(() => {
     const fetchData = async () => {
@@ -95,7 +94,16 @@ const [modalVisible, setModalVisible] = useState(false);
 
     try {
       setIsUploading(true);
+       const existing = await firestore()
+      .collection('items')
+      .where('name', '==', name.trim())
+      .get();
 
+    if (!existing.empty) {
+      Alert.alert('Duplicate Product', 'A product with this name already exists.');
+      setIsUploading(false);
+      return;
+    }
       const base64Image = await convertImageToBase64(imagePath);
       if (!base64Image) {
         Alert.alert('Error', 'Image conversion failed');
@@ -103,7 +111,7 @@ const [modalVisible, setModalVisible] = useState(false);
       }
 
       await firestore().collection('items').add({
-        name,
+         name: name.trim(),
         price: Number(price),
         discountPrice: discountPrice ? Number(discountPrice) : null,
         categoryId,

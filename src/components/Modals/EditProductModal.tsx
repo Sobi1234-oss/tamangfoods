@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   modal: {
     backgroundColor: '#fff',
     borderRadius: 15,
-    maxHeight: '80%',
+    maxHeight: '90%',
     elevation: 5,
   },
   scrollContainer: {
