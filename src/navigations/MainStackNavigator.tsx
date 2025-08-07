@@ -50,7 +50,7 @@ const MainStackNavigator = () => {
       <Stack.Screen
         name="Forget"
         component={Forget}
-        options={{ headerShown: true }}
+        options={{ headerShown: true ,headerTitleAlign:'center' }}
       />
       <Stack.Screen
         name="Reset"

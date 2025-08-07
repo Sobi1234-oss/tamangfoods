@@ -52,7 +52,7 @@ const CategorywiseProducts = ({ route, navigation }) => {
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.itemContainer}
-      onPress={() => navigation.navigate('ProductDetails', { product: item })}
+      onPress={() => navigation.navigate('ProductDetais', { product: item })}
     >
       <View style={styles.imageContainer}>
         <Image

@@ -154,7 +154,7 @@ const Order = ({ navigation }) => {
             data={orders}
             renderItem={renderOrderItem}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContainer}
+            contentContainerStyle={[styles.listContainer, { marginBottom: 50 }]}
             showsVerticalScrollIndicator={false}
           />
         )}
@@ -164,8 +164,8 @@ const Order = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#fff' },
-  container: { flex: 1, paddingHorizontal: 16, paddingTop: 8 },
+  safeArea: { flex: 1, backgroundColor: '#fff',marginBottom:20 },
+  container: { flex: 1, paddingHorizontal: 16, paddingTop: 8,marginBottom:70 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 16, color: '#666' },

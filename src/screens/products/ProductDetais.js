@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, Text, Image, StyleSheet, TouchableOpacity, Alert, 
-  ActivityIndicator, ScrollView, StatusBar, Dimensions 
+import {
+  View, Text, Image, StyleSheet, TouchableOpacity, Alert,
+  ActivityIndicator, ScrollView, StatusBar, Dimensions, Animated, Easing
 } from "react-native";
-import firestore from "@react-native-firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import LinearGradient from 'react-native-linear-gradient';
 import Header from "../../components/headers/Header";
-import useCartStore from "../../components/store/CartStore"; // Import the store
-const { width } = Dimensions.get('window');
+import useCartStore from "../../components/store/CartStore";
+
+const { width, height } = Dimensions.get('window');
 
 const ProductDetails = ({ route, navigation }) => {
   const { product } = route.params;
@@ -18,6 +18,8 @@ const ProductDetails = ({ route, navigation }) => {
   const [userRole, setUserRole] = useState("");
   const [isOwner, setIsOwner] = useState(false);
   const [loading, setLoading] = useState(false);
+  const scaleValue = new Animated.Value(0);
+  const fadeAnim = new Animated.Value(0);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -33,26 +35,52 @@ const ProductDetails = ({ route, navigation }) => {
       }
     };
     fetchUserData();
+
+    // Animation on mount
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleValue, {
+        toValue: 1,
+        friction: 4,
+        useNativeDriver: true,
+      })
+    ]).start();
   }, []);
 
-   const addToCart = useCartStore(state => state.addToCart);
+  const addToCart = useCartStore(state => state.addToCart);
 
   const handleAddToCart = async () => {
     setLoading(true);
     try {
-      // Add product to cart with current quantity
+      // Pulse animation when adding to cart
+      Animated.sequence([
+        Animated.timing(scaleValue, {
+          toValue: 1.1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleValue, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
       addToCart({
         id: product.id,
         name: product.name,
         price: product.price,
-        discountPrice: product.discountPrice,
         imageBase64: product.imageBase64,
         restaurantId: product.restaurantId,
         restaurantName: product.restaurantName
       }, quantity);
-      
+
       Alert.alert(
-        "Added to Cart", 
+        "Added to Cart",
         `${product.name} (${quantity}x) has been added to your cart`,
         [
           { text: "Continue Shopping", style: "cancel" },
@@ -67,36 +95,65 @@ const ProductDetails = ({ route, navigation }) => {
     }
   };
 
-  const incrementQuantity = () => setQuantity(prev => prev + 1);
-  const decrementQuantity = () => quantity > 1 && setQuantity(prev => prev - 1);
+  const incrementQuantity = () => {
+    Animated.timing(scaleValue, {
+      toValue: 1.05,
+      duration: 100,
+      useNativeDriver: true,
+    }).start(() => {
+      setQuantity(prev => prev + 1);
+      scaleValue.setValue(1);
+    });
+  };
+
+  const decrementQuantity = () => {
+    if (quantity > 1) {
+      Animated.timing(scaleValue, {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }).start(() => {
+        setQuantity(prev => prev - 1);
+        scaleValue.setValue(1);
+      });
+    }
+  };
+
+  const animatedStyle = {
+    transform: [{ scale: scaleValue }],
+    opacity: fadeAnim,
+  };
 
   return (
     <View style={styles.container}>
-      <Header title="Product details" showBack={true}/>
+      <StatusBar backgroundColor="#ff4500" barStyle="light-content" />
+      <Header title="Product Details" showBack={true} />
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.imageContainer}>
+        <Animated.View style={[styles.imageContainer, animatedStyle]}>
           <Image
             source={{ uri: `data:image/jpeg;base64,${product.imageBase64}` }}
             style={styles.image}
             resizeMode="cover"
           />
-        </View>
+        </Animated.View>
 
-        <View style={styles.contentContainer}>
+        <Animated.View style={[styles.contentContainer, animatedStyle]}>
           <Text style={styles.title}>{product.name}</Text>
-          
+
           <View style={styles.priceContainer}>
-          <Text style={styles.price}>Rs {product.price}</Text>
-        </View>
+            <Text style={styles.price}>Rs {product.price}</Text>
+          </View>
 
           <View style={styles.restaurantContainer}>
-            <Icon name="restaurant" size={18} color="#FF6B6B" />
+            <Icon name="restaurant" size={20} color="#ff4500" />
             <Text style={styles.restaurantName}>{product.restaurantName}</Text>
           </View>
+
+          <View style={styles.divider} />
 
           <Text style={styles.sectionTitle}>Description</Text>
           <Text style={styles.description}>
@@ -107,42 +164,56 @@ const ProductDetails = ({ route, navigation }) => {
             <View style={styles.quantityContainer}>
               <Text style={styles.quantityLabel}>Quantity:</Text>
               <View style={styles.quantityControls}>
-                <TouchableOpacity 
-                  onPress={decrementQuantity} 
+                <TouchableOpacity
+                  onPress={decrementQuantity}
                   style={styles.quantityButton}
+                  activeOpacity={0.7}
                 >
-                  <Icon name="remove" size={20} color="#fff" />
+                  <Icon name="remove" size={24} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.quantityText}>{quantity}</Text>
-                <TouchableOpacity 
-                  onPress={incrementQuantity} 
+                <Animated.Text style={[styles.quantityText, animatedStyle]}>
+                  {quantity}
+                </Animated.Text>
+                <TouchableOpacity
+                  onPress={incrementQuantity}
                   style={styles.quantityButton}
+                  activeOpacity={0.7}
                 >
-                  <Icon name="add" size={20} color="#fff" />
+                  <Icon name="add" size={24} color="#fff" />
                 </TouchableOpacity>
               </View>
             </View>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
 
       {!isOwner && (
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.addToCartButton}
-            onPress={handleAddToCart}
-            disabled={loading}
+        <Animated.View style={[styles.footer, animatedStyle]}>
+          <LinearGradient
+            colors={['#ff4500', '#ff8c00']}
+            style={styles.gradientButton}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
           >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Icon name="add-shopping-cart" size={20} color="#fff" style={styles.cartIcon} />
-                <Text style={styles.addToCartText}>ADD TO CART - Rs {(product.discountPrice || product.price) * quantity}</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={styles.addToCartButton}
+              onPress={handleAddToCart}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icon name="add-shopping-cart" size={22} color="#fff" style={styles.cartIcon} />
+                  <Text style={styles.addToCartText}>
+                    ADD TO CART - Rs {product.price * quantity}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </LinearGradient>
+        </Animated.View>
       )}
     </View>
   );
@@ -151,186 +222,164 @@ const ProductDetails = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f8f8f8',
   },
   scrollContent: {
-    paddingBottom: 80, // Space for fixed footer
+    paddingBottom: 100,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+  imageContainer: {
+    height: width * 0.8,
+    width: width - 20,
+    margin: 10,
+    borderRadius: 15,
+    overflow: 'hidden',
+    backgroundColor: '#f5f5f5',
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
-    shadowRadius: 3,
-  },
-  headerButton: {
-    padding: 5,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  cartIconContainer: {
-    position: 'relative',
-  },
-  imageContainer: {
-    height: width * 0.8,
-    width: '95%',
-    overflow: 'hidden',
-    backgroundColor: '#f5f5f5',
-    top:10,borderWidth:1,borderColor:'crimson',
-    left:8
+    shadowRadius: 5,
   },
   image: {
     width: '100%',
     height: '100%',
   },
   contentContainer: {
+    backgroundColor: '#fff',
+    margin: 15,
     padding: 20,
-    paddingBottom: 30,
+    borderRadius: 15,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   title: {
     fontSize: 28,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#333',
-    marginBottom: 10,
-    fontFamily:'Quicksand-Bold'
+    marginBottom: 8,
+    fontFamily: 'Quicksand-Bold',
   },
   priceContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 15,
-    position: 'relative',
   },
-  originalPrice: {
-    fontSize: 18,
-    color: '#999',
-   
-    marginRight: 10,
-  },
-  
   price: {
-    fontSize: 24,
-    color: 'black',
-    fontFamily:'Quicksand-Medium'
-  },
-  discountBadge: {
-    position: 'absolute',
-    right: 0,
-    backgroundColor: '#FF6B6B',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-  },
-  discountBadgeText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 26,
+    color: '#ff4500',
+    fontWeight: '700',
+    fontFamily: 'Quicksand-Bold',
   },
   restaurantContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 15,
     paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
   restaurantName: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#555',
-    marginLeft: 8,
-    fontWeight: '500',
+    marginLeft: 10,
+    fontWeight: '600',
+    fontFamily: 'Quicksand-SemiBold',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginVertical: 15,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 10,
-    marginTop: 5,
+    marginBottom: 12,
+    fontFamily: 'Quicksand-Bold',
   },
   description: {
     fontSize: 16,
     color: '#666',
     lineHeight: 24,
-    marginBottom: 25,
+    marginBottom: 20,
+    fontFamily: 'Quicksand-Medium',
   },
   quantityContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 25,
+    marginTop: 20,
     backgroundColor: '#f9f9f9',
     padding: 15,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#eee',
   },
   quantityLabel: {
-    fontSize: 16,
+    fontSize: 17,
     color: '#555',
     fontWeight: '600',
+    fontFamily: 'Quicksand-SemiBold',
   },
   quantityControls: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   quantityButton: {
-    backgroundColor: '#FF6B6B',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    backgroundColor: '#ff4500',
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 2,
+    elevation: 3,
+    shadowColor: '#ff4500',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
   quantityText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginHorizontal: 15,
+    marginHorizontal: 20,
     color: '#333',
     minWidth: 30,
     textAlign: 'center',
+    fontFamily: 'Quicksand-Bold',
   },
   footer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#fff',
     padding: 15,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    backgroundColor: 'transparent',
+  },
+  gradientButton: {
+    borderRadius: 12,
     elevation: 5,
+    shadowColor: '#ff4500',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
   },
   addToCartButton: {
-    backgroundColor: '#ff4500',
     padding: 18,
-    borderRadius: 10,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#FF6B6B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
   },
   addToCartText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
     marginLeft: 10,
+    fontFamily: 'Quicksand-Bold',
   },
   cartIcon: {
-    marginRight: 5,
+    marginRight: 8,
   },
 });
 

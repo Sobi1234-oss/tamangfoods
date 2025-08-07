@@ -24,7 +24,7 @@ const Checkout = ({ navigation }) => {
   const [manualLocation, setManualLocation] = useState('');
   const [phone, setPhone] = useState('');
   const { cartItems, getTotalPrice, clearCart } = useCartStore();
-
+  const [phoneError, setPhoneError] = useState('');
   const requestLocationPermission = async () => {
     if (Platform.OS === 'ios') return true;
     try {
@@ -38,85 +38,88 @@ const Checkout = ({ navigation }) => {
     }
   };
 
- const handleGetLocation = async () => {
-  const hasPermission = await requestLocationPermission();
-  if (!hasPermission) {
-    Alert.alert('Permission Denied', 'Please allow location access.');
-    return;
-  }
+  const handleGetLocation = async () => {
+    const hasPermission = await requestLocationPermission();
+    if (!hasPermission) {
+      Alert.alert('Permission Denied', 'Please allow location access.');
+      return;
+    }
 
-  Geolocation.getCurrentPosition(
-    (position) => {
-      const { latitude, longitude } = position.coords;
-      setCoords({ latitude, longitude });
-    },
-    (error) => {
-      console.log(error);
-      Alert.alert('Location Error', error.message);
-    },
-    { enableHighAccuracy: false, timeout: 10000, maximumAge: 10000 }
-  );
-};
-
-
- const handleSubmit = async () => {
-  const user = auth().currentUser;
-
-  if (!user) {
-    Alert.alert('Error', 'User not logged in.');
-    return;
-  }
-
-  const location =
-    manualLocation.trim() ||
-    (coords ? `Lat: ${coords.latitude}, Lng: ${coords.longitude}` : '');
-
-  if (!location || !phone.trim()) {
-    Alert.alert('Error', 'Please fill all required fields.');
-    return;
-  }
-
-  const orderData = {
-    customerId: user.uid,
-    customerName: user.displayName || 'Customer',
-    phone: phone.trim(),
-    location,
-    paymentMethod: 'Cash on Delivery',
-    items: cartItems.map(item => ({
-      name: item.name || '',
-      price: item.price || 0,
-      quantity: item.quantity || 0,
-      productId: item.productId || '',
-      imageUrl: item.imageUrl || '',
-      ownerId: item.ownerId || '',
-    })),
-    totalPrice: getTotalPrice(),
-    deliveryCharge: DELIVERY_CHARGES,
-    grandTotal: getTotalPrice() + DELIVERY_CHARGES,
-    status: 'pending',
-    createdAt: firestore.FieldValue.serverTimestamp(),
+    Geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setCoords({ latitude, longitude });
+      },
+      (error) => {
+        console.log(error);
+        Alert.alert('Location Error', error.message);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 10000 }
+    );
   };
 
-  try {
-    await firestore().collection('orders').add(orderData);
 
-    clearCart();
-    Alert.alert('Success', 'Order placed successfully!');
-    navigation.navigate('MainApp', {
-  screen: 'UserTabs',
-  params: {
-    screen: 'Homescreens',
-  },
-});
-  } catch (error) {
-    console.error('Submit error:', error);
-    Alert.alert('Error', 'Order submission failed.');
-  }
-};
+  const handleSubmit = async () => {
+    const user = auth().currentUser;
+
+    if (!user) {
+      Alert.alert('Error', 'User not logged in.');
+      return;
+    }
+
+    const location =
+      manualLocation.trim() ||
+      (coords ? `Lat: ${coords.latitude}, Lng: ${coords.longitude}` : '');
+
+    if (!location || !phone.trim()) {
+      Alert.alert('Error', 'Please fill all required fields.');
+      return;
+    }
+    if (phone.length !== 11) {
+  setPhoneError('Phone number must be exactly 11 digits');
+  return;
+}
+    const orderData = {
+      customerId: user.uid,
+      customerName: user.displayName || 'Customer',
+      phone: phone.trim(),
+      location,
+      paymentMethod: 'Cash on Delivery',
+      items: cartItems.map(item => ({
+        name: item.name || '',
+        price: item.price || 0,
+        quantity: item.quantity || 0,
+        productId: item.productId || '',
+        imageUrl: item.imageUrl || '',
+        ownerId: item.ownerId || '',
+      })),
+      totalPrice: getTotalPrice(),
+      deliveryCharge: DELIVERY_CHARGES,
+      grandTotal: getTotalPrice() + DELIVERY_CHARGES,
+      status: 'pending',
+      createdAt: firestore.FieldValue.serverTimestamp(),
+    };
+
+    try {
+      await firestore().collection('orders').add(orderData);
+
+      clearCart();
+      Alert.alert('Success', 'Order placed successfully!');
+      navigation.navigate('MainApp', {
+        screen: 'UserTabs',
+        params: {
+          screen: 'Homescreens',
+        },
+      });
+    } catch (error) {
+      console.error('Submit error:', error);
+      Alert.alert('Error', 'Order submission failed.');
+    }
+  };
 
 
   return (
-    
+
     <KeyboardAvoidingView style={styles.container} behavior="padding">
       <Header title="Dashboard" showBack={true} />
       <ScrollView contentContainerStyle={styles.body}>
@@ -143,12 +146,24 @@ const Checkout = ({ navigation }) => {
         <TextInput
           placeholder="Phone Number"
           value={phone}
-          onChangeText={setPhone}
-          style={styles.input}
+          onChangeText={(text) => {
+            const numericText = text.replace(/[^0-9]/g, '');
+            if (numericText.length <= 11) {
+              setPhone(numericText);
+              if (numericText.length === 11) {
+                setPhoneError('');
+              } else {
+                setPhoneError('Phone number must be exactly 11 digits');
+              }
+            }
+          }}
+          style={[styles.input, phoneError ? styles.inputError : null]}
           keyboardType="phone-pad"
           placeholderTextColor="#aaa"
-          
         />
+        {phoneError ? (
+          <Text style={styles.errorText}>{phoneError}</Text>
+        ) : null}
 
         <View style={styles.summary}>
           <Text style={styles.summaryText}>Items Total: Rs. {getTotalPrice()}</Text>
@@ -195,7 +210,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 15,
-    color:"black"
+    color: "black"
   },
   summary: {
     marginTop: 20,
@@ -226,6 +241,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  errorText: {
+  color: 'red',
+  marginBottom: 10,
+  fontSize: 13,
+},
+inputError: {
+  borderColor: 'red',
+},
 });
 
 export default Checkout;

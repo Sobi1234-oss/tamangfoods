@@ -6,7 +6,7 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   Image,
-  ScrollView
+  SafeAreaView
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import useCartStore from '../../components/store/CartStore';
@@ -20,8 +20,6 @@ const Cart = ({ navigation }) => {
     getTotalPrice,
     clearCart
   } = useCartStore();
-
-
 
   const renderItem = ({ item }) => (
     <View style={styles.cartItem}>
@@ -60,7 +58,7 @@ const Cart = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Header title="Your Cart" showBack={true} />
       
       {cartItems.length === 0 ? (
@@ -75,28 +73,31 @@ const Cart = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={styles.contentContainer}>
           <FlatList
             data={cartItems}
             renderItem={renderItem}
             keyExtractor={item => item.id}
-            scrollEnabled={false}
+            contentContainerStyle={styles.listContent}
+            ListFooterComponent={
+              <View style={styles.totalContainer}>
+                <Text style={styles.totalText}>Total:</Text>
+                <Text style={styles.totalAmount}>Rs {getTotalPrice().toFixed(2)}</Text>
+              </View>
+            }
           />
           
-          <View style={styles.totalContainer}>
-            <Text style={styles.totalText}>Total:</Text>
-            <Text style={styles.totalAmount}>Rs {getTotalPrice().toFixed(2)}</Text>
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.checkoutButton}
+              onPress={() => navigation.navigate('CheckOut')}
+            >
+              <Text style={styles.checkoutText}>Proceed to Checkout</Text>
+            </TouchableOpacity>
           </View>
-          
-          <TouchableOpacity
-            style={styles.checkoutButton}
-           onPress={() => navigation.navigate('CheckOut')}
-          >
-            <Text style={styles.checkoutText}>Proceed to Checkout</Text>
-          </TouchableOpacity>
-        </ScrollView>
+        </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -104,9 +105,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    marginBottom:65
   },
-  scrollContainer: {
-    paddingBottom: 20,
+  contentContainer: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  listContent: {
+    paddingBottom: 80, // Add padding to prevent the list from being hidden behind the footer
   },
   emptyCart: {
     flex: 1,
@@ -121,7 +127,7 @@ const styles = StyleSheet.create({
   continueShopping: {
     marginTop: 20,
     padding: 15,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: '#cd6a28ff',
     borderRadius: 8,
   },
   continueText: {
@@ -180,17 +186,27 @@ const styles = StyleSheet.create({
   totalText: {
     fontSize: 18,
     fontWeight: 'bold',
+    color:'black'
   },
   totalAmount: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FF6B6B',
   },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    padding: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
   checkoutButton: {
-    backgroundColor: '#FF6B6B',
+    backgroundColor: '#dc5a27ff',
     padding: 15,
     borderRadius: 8,
-    marginHorizontal: 20,
     alignItems: 'center',
   },
   checkoutText: {

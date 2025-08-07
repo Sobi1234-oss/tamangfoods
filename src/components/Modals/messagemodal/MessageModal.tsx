@@ -66,14 +66,18 @@ const styles = StyleSheet.create({
   modalTitle: {
     marginTop: 15,
     marginBottom: 10,
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 17,
+   
     textAlign: 'center',
+    color:'blue',
+    fontFamily:'Quicksand-Bold'
   },
   modalText: {
     marginBottom: 20,
-    fontSize: 16,
+    fontSize: 15,
     textAlign: 'center',
+    color:'black',
+    fontFamily:'Quicksand-Regular'
   },
   button: {
     borderRadius: 5,

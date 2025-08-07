@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,15 +9,20 @@ import {
   ActivityIndicator,
   Dimensions,
   TouchableOpacity,
-  ScrollView
+  ScrollView,
+  Alert
 } from 'react-native';
+import { Provider as PaperProvider } from 'react-native-paper';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import firestore from '@react-native-firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Menu } from 'react-native-paper';
 import HomeHeader from '../../components/headers/HomeHeader';
 import useUserStore from '../../components/store/UserStore';
+import EditProductModal from '../../components/Modals/EditProductModal';
+
 const { width } = Dimensions.get('window');
 
 type Product = {
@@ -31,64 +35,82 @@ type Product = {
   rating?: number;
 };
 
+type Category = {
+  id: string;
+  name: string;
+};
+
+const HomeScreenWrapper = () => {
+  return (
+    <PaperProvider>
+      <Homescreen />
+    </PaperProvider>
+  );
+};
+
 const Homescreen = () => {
   const navigation = useNavigation();
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [displayProducts, setDisplayProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<{ id: string, name: string }[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [selectedProductForMenu, setSelectedProductForMenu] = useState<Product | null>(null);
 
-  // Color palette for categories
+  const [specialProducts, setSpecialProducts] = useState<Product[]>([]);
+  const [regularProducts, setRegularProducts] = useState<Product[]>([]);
+
   const categoryColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F06292'];
   const user = useUserStore(state => state.user);
   const isAuthenticated = useUserStore(state => state.isAuthenticated);
-  useEffect(() => {
-  console.log('User info:', user);
-  console.log('Is Authenticated:', isAuthenticated);
-}, [user, isAuthenticated]);
+
   useFocusEffect(
-  useCallback(() => {
-    const fetchData = async () => {
-      try {
-        const name = await AsyncStorage.getItem('userName');
-        setUserName(name || 'Guest');
+    useCallback(() => {
+      const fetchData = async () => {
+        try {
+          const [categoriesSnapshot, productsSnapshot] = await Promise.all([
+            firestore().collection('categories').get(),
+            firestore().collection('items').orderBy('createdAt', 'desc').get()
+          ]);
 
-        const [categoriesSnapshot, productsSnapshot] = await Promise.all([
-          firestore().collection('categories').get(),
-          firestore().collection('items').orderBy('createdAt', 'desc').get()
-        ]);
+          const loadedCategories = categoriesSnapshot.docs.map(doc => ({
+            id: doc.id,
+            name: doc.data().name
+          }));
 
-        const loadedCategories = categoriesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          name: doc.data().name
-        }));
+          setCategories([{ id: 'all', name: 'All' }, ...loadedCategories]);
 
-        setCategories([{ id: 'all', name: 'All' }, ...loadedCategories]);
+          const loadedProducts = productsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            imageBase64: doc.data().imageBase64 || ''
+          } as Product));
 
-        const loadedProducts = productsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          imageBase64: doc.data().imageBase64 || ''
-        } as Product));
+          setAllProducts(loadedProducts);
 
-        setAllProducts(loadedProducts);
-        setDisplayProducts(loadedProducts.slice(0, 10));
-      } catch (error) {
-        console.error("Error fetching data: ", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+          // Separate special and regular products
+          const special = loadedProducts.filter(p => p.discountPrice);
+          const regular = loadedProducts.filter(p => !p.discountPrice);
 
-    fetchData();
-  }, [])
-);
+          setSpecialProducts(special.slice(0, 4)); // Show first 4 special offers
+          setRegularProducts(regular.slice(0, 10)); // Show first 10 regular products
+        } catch (error) {
+          console.error("Error fetching data: ", error);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchData();
+    }, [])
+  );
+
 
   useEffect(() => {
-    // Filter products based on search and category
     let filtered = allProducts;
 
     if (searchQuery) {
@@ -106,7 +128,35 @@ const Homescreen = () => {
     setDisplayProducts(filtered.slice(0, 10));
   }, [searchQuery, selectedCategory, allProducts]);
 
-
+  const handleDeleteProduct = async (productId: string) => {
+    setMenuVisible(false);
+    Alert.alert(
+      'Delete Product',
+      'Are you sure you want to delete this product?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await firestore().collection('items').doc(productId).delete();
+              const updatedProducts = allProducts.filter(p => p.id !== productId);
+              setAllProducts(updatedProducts);
+              setDisplayProducts(updatedProducts.slice(0, 10));
+              Alert.alert('Success', 'Product deleted successfully');
+            } catch (error) {
+              console.error('Delete error:', error);
+              Alert.alert('Error', 'Failed to delete product');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -120,51 +170,86 @@ const Homescreen = () => {
     setSearchQuery('');
   };
 
-  const renderProductItem = ({ item }: { item: Product }) => (
-    <TouchableOpacity
-      style={styles.productCard}
-      onPress={() => navigation.navigate('ProductDetais', { product: item })}
-    >
-      <Image
-        source={{ uri: `data:image/jpeg;base64,${item.imageBase64}` }}
-        style={styles.productImage}
-        resizeMode="cover"
-      />
-      <View style={styles.productDetails}>
-        <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
-
-        <View style={styles.priceContainer}>
-
-          <Text style={styles.originalPrice}>Rs {item.price.toFixed(0)}</Text>
-
-        </View>
-
-        {item.rating && (
-          <View style={styles.ratingContainer}>
-            <Icon name="star" size={14} color="#FFA000" />
-            <Text style={styles.ratingText}>{item.rating.toFixed(1)}</Text>
+  const handleEditPress = (product: Product) => {
+    setSelectedProduct(product);
+    setModalVisible(true);
+  };
+  const renderProductItem = ({ item, showMenu = false }: { item: Product, showMenu?: boolean }) => {
+    return (
+      <View style={styles.productCard}>
+        {showMenu && (
+          <View style={styles.menuContainer}>
+            <Menu
+              visible={menuVisible && selectedProductForMenu?.id === item.id}
+              onDismiss={() => setMenuVisible(false)}
+              anchor={
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedProductForMenu(item);
+                    setMenuVisible(true);
+                  }}
+                  style={styles.menuButton}
+                >
+                  <Icon name="more-vert" size={24} color="#FF6B6B" />
+                </TouchableOpacity>
+              }
+              contentStyle={styles.menuContent}
+            >
+              <Menu.Item
+                onPress={() => {
+                  setMenuVisible(false);
+                  handleEditPress(item);
+                }}
+                title="Update"
+                titleStyle={{ color: 'skyblue' }}
+              />
+              <Menu.Item
+                onPress={() => handleDeleteProduct(item.id)}
+                title="Delete"
+                titleStyle={{ color: 'red' }}
+              />
+            </Menu>
           </View>
         )}
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          onPress={() => navigation.navigate('ProductDetais', { product: item })}
+        >
+          <Image
+            source={{ uri: `data:image/jpeg;base64,${item.imageBase64}` }}
+            style={styles.productImage}
+            resizeMode="cover"
+          />
+          <View style={styles.productDetails}>
+            <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
+            <View style={styles.priceContainer}>
+              <Text style={styles.originalPrice}>Rs {item.price.toFixed(0)}</Text>
+            </View>
+            {item.rating && (
+              <View style={styles.ratingContainer}>
+                <Icon name="star" size={14} color="#FFA000" />
+                <Text style={styles.ratingText}>{item.rating.toFixed(1)}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
-  );
-
-  const renderCategoryItem = ({ item, index }: { item: { id: string, name: string }, index: number }) => (
+    );
+  };
+  const renderCategoryItem = ({ item, index }: { item: Category, index: number }) => (
     <TouchableOpacity
       style={[
         styles.categoryItem,
         {
           backgroundColor: selectedCategory === item.id
             ? '#FF6D42'
-            : categoryColors[(index + 1) % categoryColors.length], // +1 to skip "All" color
+            : categoryColors[(index + 1) % categoryColors.length],
           shadowColor: categoryColors[(index + 1) % categoryColors.length],
         }
       ]}
       onPress={() => handleCategoryPress(item.id)}
     >
-      <Text style={styles.categoryText}>
-        {item.name}
-      </Text>
+      <Text style={styles.categoryText}>{item.name}</Text>
     </TouchableOpacity>
   );
 
@@ -194,16 +279,13 @@ const Homescreen = () => {
 
       <LinearGradient colors={['#FFF9F2', '#FFEBD6']} style={styles.contentContainer}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Greeting Section */}
           <View style={styles.greetingContainer}>
             <Text style={styles.greetingText}>
-              {getGreeting()} <Text style={styles.greetingText1}>, {user?.fullName }
-            </Text>
+              {getGreeting()} <Text style={styles.greetingText1}>, {user?.fullName}</Text>
             </Text>
             <Text style={styles.subtitle}>What would you like to order today?</Text>
           </View>
 
-          {/* Categories Section */}
           <View style={styles.sectionContainer}>
             <Text style={styles.sectionTitle}>Categories</Text>
             <View style={styles.titleUnderline} />
@@ -217,7 +299,6 @@ const Homescreen = () => {
             />
           </View>
 
-          {/* Products Section */}
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
@@ -242,10 +323,10 @@ const Homescreen = () => {
             </View>
             <View style={styles.titleUnderline} />
 
-            {displayProducts.length > 0 ? (
+            {displayProducts.filter(p => p.type === 'simple').length > 0 ? (
               <FlatList
-                data={displayProducts}
-                renderItem={renderProductItem}
+                data={displayProducts.filter(p => p.type === 'simple')}
+                renderItem={({ item }) => renderProductItem({ item, showMenu: true })}
                 keyExtractor={item => item.id}
                 numColumns={2}
                 columnWrapperStyle={styles.productsRow}
@@ -254,12 +335,11 @@ const Homescreen = () => {
             ) : (
               <View style={styles.emptyContainer}>
                 <Icon name="search-off" size={50} color="#FF6D42" />
-                <Text style={styles.emptyText}>No products found</Text>
+                <Text style={styles.emptyText}>No simple products found</Text>
               </View>
             )}
           </View>
 
-          {/* Special Offers Section - Only show when no category/search is selected */}
           {!selectedCategory && !searchQuery && (
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeader}>
@@ -269,7 +349,7 @@ const Homescreen = () => {
 
               <FlatList
                 data={[...allProducts].filter(p => p.discountPrice).slice(0, 4)}
-                renderItem={renderProductItem}
+                renderItem={({ item }) => renderProductItem({ item, showMenu: true })}
                 keyExtractor={item => item.id}
                 numColumns={2}
                 columnWrapperStyle={styles.productsRow}
@@ -280,16 +360,26 @@ const Homescreen = () => {
               />
             </View>
           )}
+
+          <EditProductModal
+            visible={modalVisible}
+            onClose={() => setModalVisible(false)}
+            product={selectedProduct}
+            onUpdate={() => {
+              console.log("Product updated, refresh data here");
+            }}
+          />
         </ScrollView>
       </LinearGradient>
     </View>
   );
 };
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FF6D42',
-    marginBottom: 50
+    marginBottom: 70
   },
   contentContainer: {
     flex: 1,
@@ -322,7 +412,7 @@ const styles = StyleSheet.create({
     color: '#FF6D42',
     marginBottom: 5,
   },
-    greetingText1: {
+  greetingText1: {
     fontSize: 28,
     fontFamily: 'Quicksand-Bold',
     color: '#42d3ffff',
@@ -353,7 +443,8 @@ const styles = StyleSheet.create({
     width: 50,
     backgroundColor: '#c2601bff',
     borderRadius: 3,
-    marginBottom: 30, top: 5
+    marginBottom: 30,
+    top: 5
   },
   seeAllButton: {
     flexDirection: 'row',
@@ -401,7 +492,24 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 5,
-    height: 300
+    height: 300,
+    position: 'relative',
+  },
+  menuContainer: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+  },
+  menuButton: {
+    padding: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: 20,
+  },
+  menuContent: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    elevation: 4,
   },
   productImage: {
     width: '100%',
@@ -421,22 +529,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 5,
   },
-  price: {
-    fontFamily: 'Quicksand-SemiBold',
-    fontSize: 16,
-    color: '#FF6D42',
-  },
-  discountedPrice: {
-    fontFamily: 'Quicksand-SemiBold',
-    fontSize: 16,
-    color: '#FF6D42',
-    marginRight: 5,
-  },
   originalPrice: {
     fontFamily: 'Quicksand-Medium',
     fontSize: 14,
     color: '#FF6D42',
-
   },
   ratingContainer: {
     flexDirection: 'row',
@@ -462,4 +558,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Homescreen;
+export default HomeScreenWrapper;

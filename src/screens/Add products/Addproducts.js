@@ -18,6 +18,8 @@ const Addproduct = ({ navigation }) => {
   const [description, setDescription] = useState('');
   const [productType, setProductType] = useState('simple');
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -43,7 +45,7 @@ const Addproduct = ({ navigation }) => {
 
     fetchData();
   }, []);
-
+   
   const handleImagePick = () => {
     launchImageLibrary(
       { mediaType: 'photo', quality: 0.5, maxWidth: 800, maxHeight: 800 },
@@ -169,6 +171,7 @@ const Addproduct = ({ navigation }) => {
             >
               <Picker.Item label="Top Rated" value="topRated" />
               <Picker.Item label="Simple" value="simple" />
+               <Picker.Item label="Special" value="special" />
             </Picker>
           </View>
 

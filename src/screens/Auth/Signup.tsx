@@ -13,8 +13,8 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-import MessageModal from '../../components/Modals/messagemodal/MessageModal'; // Adjust the import path as needed
-
+import MessageModal from '../../components/Modals/messagemodal/MessageModal';
+import { AuthGlobalStyles } from '../../components/Stylesheets/AuthGlobalStyles';
 type SignupProps = {
   navigation: {
     navigate: (route: string) => void;
@@ -40,6 +40,18 @@ const Signup: React.FC<SignupProps> = ({ navigation }) => {
     setModalVisible(true);
   };
 
+  const checkEmailAvailability = async (email: string): Promise<boolean> => {
+    try {
+      const methods = await auth().fetchSignInMethodsForEmail(email);
+      return methods.length === 0;
+    } catch (error: any) {
+      if (error.code === 'auth/invalid-email') {
+        return false;
+      }
+      return false;
+    }
+  };
+
   const createuser = async () => {
     if (!fullName || !email || !password) {
       showModal('error', 'Error', 'Please fill all fields');
@@ -58,25 +70,41 @@ const Signup: React.FC<SignupProps> = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      // Create user in Firebase Authentication
+
+      const isEmailAvailable = await checkEmailAvailability(email);
+
+      if (!isEmailAvailable) {
+        showModal('error', 'Email Taken', 'This email is already registered. Please use a different email or login.');
+        return;
+      }
+
+
       const userCredential = await auth().createUserWithEmailAndPassword(email, password);
       const user = userCredential.user;
 
-      // Save user data in Firestore
+
+      await user.sendEmailVerification();
+
+
       await firestore().collection('users').doc(user.uid).set({
         fullName,
         email,
         role: 'customer',
+        emailVerified: false,
         createdAt: firestore.FieldValue.serverTimestamp(),
       });
 
-      showModal('success', 'Success', 'Account created successfully!');
-      
-      // Clear input fields
+      showModal(
+        'success',
+        'Verify Your Email',
+        'We sent a verification email. Please check your inbox and verify your email to complete registration.'
+      );
+
+
       setFullName('');
       setEmail('');
       setPassword('');
-      
+
     } catch (error: any) {
       let errorMessage = 'An error occurred during sign up';
 
@@ -107,24 +135,23 @@ const Signup: React.FC<SignupProps> = ({ navigation }) => {
       navigation.navigate('Login');
     }
   };
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={AuthGlobalStyles.container}
     >
-      <ScrollView 
-        contentContainerStyle={styles.scrollContainer}
+      <ScrollView
+        contentContainerStyle={AuthGlobalStyles.scrollContainer}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>Join us today!</Text>
+        <Text style={AuthGlobalStyles.title}>Create Account</Text>
+        <Text style={AuthGlobalStyles.subtitle}>Join us today!</Text>
 
         {/* Full Name Input */}
-        <View style={styles.inputContainer}>
-          <Icon name="person-outline" size={20} color="#7a7a7a" style={styles.icon} />
+        <View style={AuthGlobalStyles.inputContainer}>
+          <Icon name="person-outline" size={20} color="#7a7a7a" style={AuthGlobalStyles.icon} />
           <TextInput
-            style={styles.input}
+            style={AuthGlobalStyles.input}
             placeholder="Full Name"
             placeholderTextColor="#999"
             value={fullName}
@@ -134,10 +161,10 @@ const Signup: React.FC<SignupProps> = ({ navigation }) => {
         </View>
 
         {/* Email Input */}
-        <View style={styles.inputContainer}>
-          <MaterialIcon name="email" size={20} color="#7a7a7a" style={styles.icon} />
+        <View style={AuthGlobalStyles.inputContainer}>
+          <MaterialIcon name="email" size={20} color="#7a7a7a" style={AuthGlobalStyles.icon} />
           <TextInput
-            style={styles.input}
+            style={AuthGlobalStyles.input}
             placeholder="Email Address"
             placeholderTextColor="#999"
             keyboardType="email-address"
@@ -146,20 +173,20 @@ const Signup: React.FC<SignupProps> = ({ navigation }) => {
             onChangeText={validateEmail}
           />
           {email.length > 0 && (
-            <Icon 
-              name={emailValid ? "checkmark-circle" : "close-circle"} 
-              size={20} 
-              color={emailValid ? "#4CAF50" : "#F44336"} 
-              style={styles.iconRight} 
+            <Icon
+              name={emailValid ? "checkmark-circle" : "close-circle"}
+              size={20}
+              color={emailValid ? "#4CAF50" : "#F44336"}
+              style={AuthGlobalStyles.iconRight}
             />
           )}
         </View>
 
         {/* Password Input */}
-        <View style={styles.inputContainer}>
-          <Icon name="lock-closed-outline" size={20} color="#7a7a7a" style={styles.icon} />
+        <View style={AuthGlobalStyles.inputContainer}>
+          <Icon name="lock-closed-outline" size={20} color="#7a7a7a" style={AuthGlobalStyles.icon} />
           <TextInput
-            style={styles.input}
+            style={AuthGlobalStyles.input}
             placeholder="Password (min 6 characters)"
             placeholderTextColor="#999"
             secureTextEntry={!showPassword}
@@ -167,9 +194,9 @@ const Signup: React.FC<SignupProps> = ({ navigation }) => {
             onChangeText={setPassword}
             autoCapitalize="none"
           />
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => setShowPassword(!showPassword)}
-            style={styles.passwordToggle}
+            style={AuthGlobalStyles.passwordToggle}
           >
             <Icon
               name={showPassword ? "eye-outline" : "eye-off-outline"}
@@ -180,23 +207,27 @@ const Signup: React.FC<SignupProps> = ({ navigation }) => {
         </View>
 
         {/* Sign Up Button */}
-        <TouchableOpacity 
-          style={[styles.signupButton, isLoading && styles.disabledButton]} 
+        <TouchableOpacity
+          style={[AuthGlobalStyles.primaryButton, isLoading && AuthGlobalStyles.disabledButton]}
           onPress={createuser}
           disabled={isLoading}
         >
-          <Text style={styles.signupButtonText}>
+          <Text style={AuthGlobalStyles.buttonText}>
             {isLoading ? 'Creating Account...' : 'Sign Up'}
           </Text>
         </TouchableOpacity>
 
-        <View style={styles.loginContainer}>
-          <Text style={styles.loginText}>Already have an account? </Text>
-          <TouchableOpacity 
+        <View style={AuthGlobalStyles.dividerContainer}>
+          <Text style={AuthGlobalStyles.dividerText}>Or</Text>
+        </View>
+
+        <View style={AuthGlobalStyles.linkContainer}>
+          <Text style={AuthGlobalStyles.linkText}>Already have an account? </Text>
+          <TouchableOpacity
             onPress={() => navigation.navigate('Login')}
             disabled={isLoading}
           >
-            <Text style={styles.loginLink}>Login</Text>
+            <Text style={AuthGlobalStyles.primaryLink}>Login</Text>
           </TouchableOpacity>
         </View>
 
@@ -212,88 +243,5 @@ const Signup: React.FC<SignupProps> = ({ navigation }) => {
     </KeyboardAvoidingView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    padding: 25,
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 5,
-    color: '#333',
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#7a7a7a',
-    marginBottom: 30,
-    textAlign: 'center',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    marginBottom: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-    paddingVertical: 0,
-  },
-  icon: {
-    marginRight: 10,
-  },
-  iconRight: {
-    marginLeft: 10,
-  },
-  passwordToggle: {
-    padding: 5,
-  },
-  signupButton: {
-    backgroundColor: '#FF6B6B',
-    padding: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  disabledButton: {
-    backgroundColor: '#cccccc',
-  },
-  signupButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  loginContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 25,
-  },
-  loginText: {
-    color: '#7a7a7a',
-    fontSize: 15,
-  },
-  loginLink: {
-    color: '#FF6B6B',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-});
 
 export default Signup;
