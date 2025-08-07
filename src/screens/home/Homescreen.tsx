@@ -67,7 +67,7 @@ const Homescreen = () => {
   const categoryColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F06292'];
   const user = useUserStore(state => state.user);
   const isAuthenticated = useUserStore(state => state.isAuthenticated);
-
+  const isAdmin = user?.role === 'admin';
   useFocusEffect(
     useCallback(() => {
       const fetchData = async () => {
@@ -175,6 +175,8 @@ const Homescreen = () => {
  const renderProductItem = ({ item }: { item: Product }) => {
     return (
       <View style={styles.productCard}>
+
+        {isAdmin && (
         <View style={styles.menuContainer}>
           <Menu
             visible={menuVisible && selectedProductForMenu?.id === item.id}
@@ -206,6 +208,7 @@ const Homescreen = () => {
             />
           </Menu>
         </View>
+        )}
         <TouchableOpacity
           style={{ flex: 1 }}
           onPress={() => navigation.navigate('ProductDetais', { product: item })}

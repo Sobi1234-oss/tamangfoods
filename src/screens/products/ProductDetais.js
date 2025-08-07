@@ -83,7 +83,7 @@ const ProductDetails = ({ route, navigation }) => {
         "Added to Cart",
         `${product.name} (${quantity}x) has been added to your cart`,
         [
-          { text: "Continue Shopping", style: "cancel" },
+          { text: "Continue Shopping",  onPress: () => navigation.navigate("UserTabs", { screen: "Home" }) },
           { text: "View Cart", onPress: () => navigation.navigate("UserTabs", { screen: "Cart" }) }
         ]
       );
