@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, SafeAreaView
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import Header from '../../components/headers/Header';
+import { sendOrderNotification } from '../../Services/notificationService';
 
 const Order = ({ navigation }) => {
   const [orders, setOrders] = useState([]);
@@ -64,18 +65,30 @@ const Order = ({ navigation }) => {
     navigation.navigate('OrderDetails', { order });
   };
 
-  const handleMarkCompleted = async (orderId) => {
-    try {
-      await firestore().collection('orders').doc(orderId).update({
-        status: 'completed',
-        deliveryTimeResponse: 'Your order will arrive in 30 minutes',
-      });
-      Alert.alert('Success', 'Order marked as completed.');
-    } catch (error) {
-      console.error('Error updating status: ', error);
-      Alert.alert('Error', 'Failed to update order status.');
-    }
-  };
+ const handleMarkCompleted = async (orderId, order) => {
+  try {
+    // Update order status
+    await firestore().collection('orders').doc(orderId).update({
+      status: 'completed',
+      deliveryTimeResponse: 'Your order will arrive in 30 minutes',
+    });
+
+    // Send notification to customer
+    await sendOrderNotification({
+      customerId: order.customerId,
+      orderId: orderId,
+      type: 'status_update',
+      status: 'completed',
+      message: `Your order #${orderId.substring(0, 6)} has been completed`,
+      read: false
+    });
+
+    Alert.alert('Success', 'Order marked as completed and customer notified.');
+  } catch (error) {
+    console.error('Error updating status: ', error);
+    Alert.alert('Error', 'Failed to update order status.');
+  }
+};
 
   const handleDeleteOrder = (orderId) => {
     Alert.alert(
@@ -120,14 +133,15 @@ const Order = ({ navigation }) => {
       <Text style={styles.orderTotal}>Rs {item.totalPrice?.toFixed(2) || '0.00'}</Text>
 
       {/* Admin: Mark Completed */}
-      {userRole === 'admin' && item.status !== 'completed' && (
-        <TouchableOpacity
-          onPress={() => handleMarkCompleted(item.id)}
-          style={styles.acceptButton}
-        >
-          <Text style={styles.acceptText}>Mark as Completed</Text>
-        </TouchableOpacity>
-      )}
+       
+    {userRole === 'admin' && item.status !== 'completed' && (
+      <TouchableOpacity
+        onPress={() => handleMarkCompleted(item.id, item)}  // Pass the full order object
+        style={styles.acceptButton}
+      >
+        <Text style={styles.acceptText}>Mark as Completed</Text>
+      </TouchableOpacity>
+    )}
 
       {/* Delete Button: Only if completed */}
       {item.status === 'completed' && (

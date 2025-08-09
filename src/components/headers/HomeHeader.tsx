@@ -1,5 +1,4 @@
-// components/Header/HomeHeader.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -13,6 +12,8 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'react-native-linear-gradient';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
 
 interface HomeHeaderProps {
   navigation: any;
@@ -22,7 +23,24 @@ interface HomeHeaderProps {
 
 const HomeHeader: React.FC<HomeHeaderProps> = ({ navigation, onProfilePress, onSearch }) => {
   const scaleAnim = new Animated.Value(0.8);
-  
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  // Fetch unread notifications count for current user
+  useEffect(() => {
+    const user = auth().currentUser;
+    if (!user) return;
+
+    const unsubscribe = firestore()
+      .collection('notifications')
+      .where('recipientId', '==', user.uid)
+      .where('read', '==', false)
+      .onSnapshot(querySnapshot => {
+        setNotificationCount(querySnapshot.size);
+      });
+
+    return () => unsubscribe();
+  }, []);
+
   React.useEffect(() => {
     Animated.timing(scaleAnim, {
       toValue: 1,
@@ -32,14 +50,37 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({ navigation, onProfilePress, onS
     }).start();
   }, []);
 
+  const handleNotificationPress = async () => {
+    const user = auth().currentUser;
+    if (!user) return;
+
+    // Mark all unread notifications as read
+    const unreadNotifications = await firestore()
+      .collection('notifications')
+      .where('recipientId', '==', user.uid)
+      .where('read', '==', false)
+      .get();
+
+    const batch = firestore().batch();
+    
+    unreadNotifications.forEach(doc => {
+      const notificationRef = firestore().collection('notifications').doc(doc.id);
+      batch.update(notificationRef, { read: true });
+    });
+
+    await batch.commit();
+    setNotificationCount(0);
+    navigation.navigate('NotificationScreen');
+  };
+
   return (
     <LinearGradient
       colors={['#FF6D42', '#FF9E5A']}
-      start={{x: 0, y: 0}}
-      end={{x: 1, y: 0}}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
       style={styles.header}
     >
-      <Animated.View style={[styles.profileContainer, {transform: [{scale: scaleAnim}]}]}>
+      <Animated.View style={[styles.profileContainer, { transform: [{ scale: scaleAnim }] }]}>
         <TouchableOpacity onPress={onProfilePress} style={styles.profileButton}>
           <Image
             source={require('../../assets/images/profile.jpg')}
@@ -62,15 +103,23 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({ navigation, onProfilePress, onS
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.notificationButton}>
+      <TouchableOpacity
+        style={styles.notificationButton}
+        onPress={handleNotificationPress}
+      >
         <Ionicons name="notifications" size={24} color="white" />
-        <View style={styles.notificationBadge}>
-          <Text style={styles.badgeText}>3</Text>
-        </View>
+        {notificationCount > 0 && (
+          <View style={styles.notificationBadge}>
+            <Text style={styles.badgeText}>
+              {notificationCount > 9 ? '9+' : notificationCount}
+            </Text>
+          </View>
+        )}
       </TouchableOpacity>
     </LinearGradient>
   );
-}
+};
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -148,19 +197,26 @@ const styles = StyleSheet.create({
   },
   notificationBadge: {
     position: 'absolute',
-    top: 2,
-    right: 2,
-    backgroundColor: '#FF3048',
+    top: 0,
+    right: 0,
+    backgroundColor: 'red',
     width: 18,
     height: 18,
     borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'white',
+    shadowColor: 'red',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 3,
+    elevation: 3,
   },
   badgeText: {
     color: 'white',
     fontSize: 10,
-    fontFamily: 'Quicksand-Bold',
+    fontWeight: 'bold',
   },
 });
 

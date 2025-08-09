@@ -4,11 +4,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const useUserStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
+  
       isAuthenticated: false,
+      
       login: (userData) => set({ user: userData, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false }),
+      logout: () => set({ user: null, isAuthenticated: false, fcmToken: null }),
+      
+    
+      
+
+      updateUser: (userData) => set(state => ({ 
+        user: { ...state.user, ...userData },
+        isAuthenticated: true 
+      })),
     }),
     {
       name: 'user-storage',

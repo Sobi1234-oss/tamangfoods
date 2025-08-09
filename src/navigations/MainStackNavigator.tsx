@@ -2,6 +2,7 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import UserTabNavigator from './UserTabNavigator';
 
+// Screens
 import Splash from '../screens/Welcome/Splash';
 import Login from '../screens/Auth/Login';
 import Loginwithphone from '../screens/Auth/Loginwithphone';
@@ -19,9 +20,13 @@ import Addcategory from '../screens/Add products/Addcategory';
 import Addproducts from '../screens/Add products/Addproducts';
 import CheckOut from '../screens/checkout/CheckOut';
 import OrderDetails from '../screens/order/OrderDetails';
-const Stack = createStackNavigator();
 
-const MainStackNavigator = () => {
+// Types
+import { RootStackParamList } from './types';
+
+const Stack = createStackNavigator<RootStackParamList>();
+
+const MainStackNavigator: React.FC = () => {
   return (
     <Stack.Navigator initialRouteName="Splash">
       {/* Splash Screen */}
@@ -50,7 +55,7 @@ const MainStackNavigator = () => {
       <Stack.Screen
         name="Forget"
         component={Forget}
-        options={{ headerShown: true ,headerTitleAlign:'center' }}
+        options={{ headerShown: true, headerTitleAlign: 'center' }}
       />
       <Stack.Screen
         name="Reset"
@@ -62,30 +67,31 @@ const MainStackNavigator = () => {
         component={Verifyphone}
         options={{ headerShown: true }}
       />
-        <Stack.Screen
+      <Stack.Screen
         name="OrderDetails"
         component={OrderDetails}
         options={{ headerShown: false }}
       />
 
       {/* Main App Screens */}
-     <Stack.Screen name="UserTabs" component={UserTabNavigator} options={{ headerShown: false }}/>
+      <Stack.Screen 
+        name="UserTabs" 
+        component={UserTabNavigator} 
+        options={{ headerShown: false }} 
+      />
       <Stack.Screen
         name="Walkthrough"
         component={Walkthrough}
         options={{ headerShown: false }}
       />
-     
+      
       <Stack.Screen
         name="ProductDetais"
         component={ProductDetais}
         options={{ headerShown: false }}
       />
-    
-     
       
-      
-       <Stack.Screen
+      <Stack.Screen
         name="CheckOut"
         component={CheckOut}
         options={{ headerShown: false }}
@@ -94,19 +100,19 @@ const MainStackNavigator = () => {
       <Stack.Screen
         name="NotificationScreen"
         component={NotificationScreen}
-        options={{ headerShown: true }}
+        options={{ headerShown: false }}
       />
-       <Stack.Screen
+      <Stack.Screen
         name="Products"
         component={Products}
         options={{ headerShown: false }}
       />
-        <Stack.Screen
+      <Stack.Screen
         name="CategorywiseProducts"
         component={CategorywiseProducts}
         options={{ headerShown: false }}
       />
-       <Stack.Screen
+      <Stack.Screen
         name="Addproducts"
         component={Addproducts}
         options={{ headerShown: false }}

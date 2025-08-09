@@ -13,10 +13,11 @@ import {
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import auth from '@react-native-firebase/auth';
-
 import useCartStore from '../../components/store/CartStore';
 import firestore from '@react-native-firebase/firestore';
 import Header from '../../components/headers/Header';
+import { sendOrderNotification } from '../../Services/notificationService';
+
 const DELIVERY_CHARGES = 100;
 
 const Checkout = ({ navigation }) => {
@@ -25,6 +26,8 @@ const Checkout = ({ navigation }) => {
   const [phone, setPhone] = useState('');
   const { cartItems, getTotalPrice, clearCart } = useCartStore();
   const [phoneError, setPhoneError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const requestLocationPermission = async () => {
     if (Platform.OS === 'ios') return true;
     try {
@@ -58,12 +61,14 @@ const Checkout = ({ navigation }) => {
     );
   };
 
-
   const handleSubmit = async () => {
-    const user = auth().currentUser;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
+    const user = auth().currentUser;
     if (!user) {
       Alert.alert('Error', 'User not logged in.');
+      setIsSubmitting(false);
       return;
     }
 
@@ -73,12 +78,16 @@ const Checkout = ({ navigation }) => {
 
     if (!location || !phone.trim()) {
       Alert.alert('Error', 'Please fill all required fields.');
+      setIsSubmitting(false);
       return;
     }
+
     if (phone.length !== 11) {
-  setPhoneError('Phone number must be exactly 11 digits');
-  return;
-}
+      setPhoneError('Phone number must be exactly 11 digits');
+      setIsSubmitting(false);
+      return;
+    }
+
     const orderData = {
       customerId: user.uid,
       customerName: user.displayName || 'Customer',
@@ -101,9 +110,27 @@ const Checkout = ({ navigation }) => {
     };
 
     try {
-      await firestore().collection('orders').add(orderData);
+      // Add order to Firestore
+      const orderRef = await firestore().collection('orders').add(orderData);
+      const orderId = orderRef.id;
+
+      // Update the order with the generated ID
+      await orderRef.update({ orderId });
+
+      const notificationData = {
+        customerId: user.uid,
+        customerName: user.displayName || 'Customer',
+        orderId: orderId,
+        grandTotal: getTotalPrice() + DELIVERY_CHARGES,
+        status: 'pending',
+        type: 'new_order',
+        read: false,
+      };
+
+      await sendOrderNotification(notificationData);
 
       clearCart();
+      setIsSubmitting(false);
       Alert.alert('Success', 'Order placed successfully!');
       navigation.navigate('MainApp', {
         screen: 'UserTabs',
@@ -112,14 +139,13 @@ const Checkout = ({ navigation }) => {
         },
       });
     } catch (error) {
+      setIsSubmitting(false);
       console.error('Submit error:', error);
-      Alert.alert('Error', 'Order submission failed.');
+      Alert.alert('Error', 'Order submission failed. Please try again.');
     }
   };
 
-
   return (
-
     <KeyboardAvoidingView style={styles.container} behavior="padding">
       <Header title="Dashboard" showBack={true} />
       <ScrollView contentContainerStyle={styles.body}>
@@ -173,8 +199,14 @@ const Checkout = ({ navigation }) => {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>Submit Order</Text>
+        <TouchableOpacity 
+          style={[styles.submitButton, isSubmitting && styles.disabledButton]} 
+          onPress={handleSubmit}
+          disabled={isSubmitting}
+        >
+          <Text style={styles.submitButtonText}>
+            {isSubmitting ? 'Submitting...' : 'Submit Order'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

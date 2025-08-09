@@ -1,24 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import firestore from '@react-native-firebase/firestore';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Header from '../../components/headers/Header';
+import { globalStyles } from '../../components/Stylesheets/AddGlobalStyles';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigations/Types';
 
-const Addproduct = ({ navigation }) => {
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [discountPrice, setDiscountPrice] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [categories, setCategories] = useState([]);
-  const [restaurantId, setRestaurantId] = useState('');
-  const [restaurants, setRestaurants] = useState([]);
-  const [imagePath, setImagePath] = useState('');
-  const [description, setDescription] = useState('');
-  const [productType, setProductType] = useState('simple');
-  const [isUploading, setIsUploading] = useState(false);
- 
+type Category = {
+  id: string;
+  name: string;
+};
+
+type Restaurant = {
+  id: string;
+  name: string;
+};
+
+type AddProductProps = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Addproduct'>;
+};
+
+const Addproduct: React.FC<AddProductProps> = ({ navigation }) => {
+  const [name, setName] = useState<string>('');
+  const [price, setPrice] = useState<string>('');
+  const [discountPrice, setDiscountPrice] = useState<string>('');
+  const [categoryId, setCategoryId] = useState<string>('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [restaurantId, setRestaurantId] = useState<string>('');
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [imagePath, setImagePath] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [productType, setProductType] = useState<'simple' | 'topRated' | 'special'>('simple');
+  const [isUploading, setIsUploading] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -27,14 +43,14 @@ const Addproduct = ({ navigation }) => {
         const categoriesList = categoriesSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-        }));
+        })) as Category[];
         setCategories(categoriesList);
 
         const restaurantsSnapshot = await firestore().collection('restaurants').get();
         const restaurantsList = restaurantsSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-        }));
+        })) as Restaurant[];
         setRestaurants(restaurantsList);
       } catch (error) {
         console.error('Fetch data error:', error);
@@ -49,23 +65,26 @@ const Addproduct = ({ navigation }) => {
     launchImageLibrary(
       { mediaType: 'photo', quality: 0.5, maxWidth: 800, maxHeight: 800 },
       (response) => {
-        if (!response.didCancel && !response.error && response.assets?.length > 0) {
+        if (!response.didCancel && !response.error && response.assets?.length > 0 && response.assets[0].uri) {
           setImagePath(response.assets[0].uri);
         }
       }
     );
   };
 
-  const convertImageToBase64 = async (uri) => {
+  const convertImageToBase64 = async (uri: string): Promise<string | null> => {
     try {
       const response = await fetch(uri);
       if (!response.ok) {
         throw new Error('Failed to fetch image');
       }
       const blob = await response.blob();
-      const base64String = await new Promise((resolve, reject) => {
+      const base64String = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]);
+        };
         reader.onerror = () => reject(new Error('Failed to read image'));
         reader.readAsDataURL(blob);
       });
@@ -77,13 +96,17 @@ const Addproduct = ({ navigation }) => {
     }
   };
 
-  const validateForm = () => {
-    if (!name || !price || !categoryId  || !imagePath || !description) {
+  const validateForm = (): boolean => {
+    if (!name || !price || !categoryId || !imagePath || !description) {
       Alert.alert('Error', 'Please fill all required fields (*)');
       return false;
     }
-    if (isNaN(price) || (discountPrice && isNaN(discountPrice))) {
-      Alert.alert('Error', 'Please enter valid prices');
+    if (isNaN(Number(price))) {
+      Alert.alert('Error', 'Please enter valid price');
+      return false;
+    }
+    if (discountPrice && isNaN(Number(discountPrice))) {
+      Alert.alert('Error', 'Please enter valid discount price');
       return false;
     }
     return true;
@@ -94,16 +117,17 @@ const Addproduct = ({ navigation }) => {
 
     try {
       setIsUploading(true);
-       const existing = await firestore()
-      .collection('items')
-      .where('name', '==', name.trim())
-      .get();
+      const existing = await firestore()
+        .collection('items')
+        .where('name', '==', name.trim())
+        .get();
 
-    if (!existing.empty) {
-      Alert.alert('Duplicate Product', 'A product with this name already exists.');
-      setIsUploading(false);
-      return;
-    }
+      if (!existing.empty) {
+        Alert.alert('Duplicate Product', 'A product with this name already exists.');
+        setIsUploading(false);
+        return;
+      }
+
       const base64Image = await convertImageToBase64(imagePath);
       if (!base64Image) {
         Alert.alert('Error', 'Image conversion failed');
@@ -111,7 +135,7 @@ const Addproduct = ({ navigation }) => {
       }
 
       await firestore().collection('items').add({
-         name: name.trim(),
+        name: name.trim(),
         price: Number(price),
         discountPrice: discountPrice ? Number(discountPrice) : null,
         categoryId,
@@ -142,19 +166,18 @@ const Addproduct = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.mainContainer}>
-      {/* Header */}
+    <View style={globalStyles.mainContainer}>
       <Header title="Add product" showBack={true} />
 
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.container}>
-          <Text style={styles.sectionTitle}>Product Information</Text>
+      <ScrollView contentContainerStyle={globalStyles.scrollContainer}>
+        <View style={globalStyles.container}>
+          <Text style={globalStyles.sectionTitle}>Product Information</Text>
           
-          <View style={styles.pickerContainer}>
+          <View style={globalStyles.pickerContainer}>
             <Picker
               selectedValue={categoryId}
-              onValueChange={setCategoryId}
-              style={styles.picker}
+              onValueChange={(itemValue) => setCategoryId(itemValue as string)}
+              style={globalStyles.picker}
               dropdownIconColor="#FF6B3C"
             >
               <Picker.Item label="Select Category *" value="" color="#888" />
@@ -168,32 +191,30 @@ const Addproduct = ({ navigation }) => {
             </Picker>
           </View>
 
-         
-
-          <View style={styles.pickerContainer}>
+          <View style={globalStyles.pickerContainer}>
             <Picker
               selectedValue={productType}
-              onValueChange={setProductType}
-              style={styles.picker}
+              onValueChange={(itemValue) => setProductType(itemValue as 'simple' | 'topRated' | 'special')}
+              style={globalStyles.picker}
               dropdownIconColor="#FF6B3C"
             >
               <Picker.Item label="Top Rated" value="topRated" />
               <Picker.Item label="Simple" value="simple" />
-               <Picker.Item label="Special" value="special" />
+              <Picker.Item label="Special" value="special" />
             </Picker>
           </View>
 
           <TextInput
-            style={styles.input}
+            style={globalStyles.input}
             placeholder="Enter Product Name *"
             placeholderTextColor="#888"
             value={name}
             onChangeText={setName}
           />
 
-          <View style={styles.priceContainer}>
+          <View style={globalStyles.priceContainer}>
             <TextInput
-              style={[styles.input, { flex: 1, marginRight: 10 }]}
+              style={[globalStyles.input, { flex: 1, marginRight: 10 }]}
               placeholder="Price *"
               keyboardType="numeric"
               placeholderTextColor="#888"
@@ -201,7 +222,7 @@ const Addproduct = ({ navigation }) => {
               onChangeText={setPrice}
             />
             <TextInput
-              style={[styles.input, { flex: 1 }]}
+              style={[globalStyles.input, { flex: 1 }]}
               placeholder="Discounted Price"
               placeholderTextColor="#888"
               keyboardType="numeric"
@@ -211,7 +232,7 @@ const Addproduct = ({ navigation }) => {
           </View>
 
           <TextInput
-            style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
+            style={[globalStyles.input, { height: 100, textAlignVertical: 'top' }]}
             placeholder="Product Description *"
             placeholderTextColor="#888"
             value={description}
@@ -219,18 +240,18 @@ const Addproduct = ({ navigation }) => {
             multiline
           />
 
-          <Text style={styles.uploadText}>Product Image *</Text>
+          <Text style={globalStyles.uploadText}>Product Image *</Text>
           <TouchableOpacity 
-            style={styles.imagePicker} 
+            style={globalStyles.imagePicker} 
             onPress={handleImagePick}
             disabled={isUploading}
           >
             {imagePath ? (
-              <Image source={{ uri: imagePath }} style={styles.image} />
+              <Image source={{ uri: imagePath }} style={globalStyles.image} />
             ) : (
-              <View style={styles.imagePlaceholder}>
+              <View style={globalStyles.imagePlaceholder}>
                 <Icon name="photo-camera" size={40} color="#FF6B3C" />
-                <Text style={styles.imageText}>
+                <Text style={globalStyles.imageText}>
                   {isUploading ? 'Uploading...' : 'Tap to select image'}
                 </Text>
               </View>
@@ -238,150 +259,19 @@ const Addproduct = ({ navigation }) => {
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.button, isUploading && styles.disabledButton]} 
+            style={[globalStyles.button, isUploading && globalStyles.disabledButton]} 
             onPress={saveProduct}
             disabled={isUploading}
           >
-            <Text style={styles.buttonText}>
+            <Text style={globalStyles.buttonText}>
               {isUploading ? 'Saving Product...' : 'Add Product'}
             </Text>
-            <Icon name="add-circle-outline" size={20} color="#fff" style={styles.buttonIcon} />
+            <Icon name="add-circle-outline" size={20} color="#fff" style={globalStyles.buttonIcon} />
           </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  mainContainer: {
-    flex: 1,
-    backgroundColor: '#f8f8f8',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FF6B3C',
-    paddingVertical: 15,
-    paddingHorizontal: 15,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-  },
-  backButton: {
-    padding: 5,
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  headerRight: {
-    width: 24,
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    paddingBottom: 20,
-  },
-  container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FF6B3C',
-    marginBottom: 20,
-    paddingBottom: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  input: {
-    height: 50,
-    borderColor: '#ddd',
-    borderWidth: 1,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    fontSize: 16,
-    color: '#333',
-  },
-  priceContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    marginBottom: 15,
-    backgroundColor: '#fff',
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-    color: '#333',
-  },
-  uploadText: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 10,
-  },
-  imagePicker: {
-    height: 180,
-    backgroundColor: '#f9f9f9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    overflow: 'hidden',
-  },
-  imagePlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  imageText: {
-    color: '#888',
-    marginTop: 10,
-    fontSize: 16,
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  button: {
-    backgroundColor: '#FF6B3C',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    elevation: 3,
-    shadowColor: '#FF6B3C',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-  },
-  disabledButton: {
-    backgroundColor: '#ff9d7c',
-  },
-  buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  buttonIcon: {
-    marginLeft: 10,
-  },
-});
 
 export default Addproduct;

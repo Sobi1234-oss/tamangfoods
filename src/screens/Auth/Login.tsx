@@ -7,21 +7,23 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView,
+  Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { getAuth, signInWithEmailAndPassword } from '@react-native-firebase/auth';
+import auth from '@react-native-firebase/auth';
 import useUserStore from '../../components/store/UserStore';
 import firestore from '@react-native-firebase/firestore';
 import MessageModal from '../../components/Modals/messagemodal/MessageModal';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { AuthGlobalStyles } from '../../components/Stylesheets/AuthGlobalStyles';
+import { storeFCMToken } from '../../Services/notificationService';
+
 type RootStackParamList = {
   UserTabs: undefined;
   Signup: undefined;
   Forget: undefined;
-  // Add other routes here
 };
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'UserTabs'>;
@@ -39,10 +41,10 @@ const Login: React.FC = () => {
   const [modalMessage, setModalMessage] = useState<string>('');
   
   const { login, isAuthenticated } = useUserStore();
-
+  const user = auth().currentUser;
   useEffect(() => {
     if (isAuthenticated) {
-      navigation.navigate('UserTabs', { screen: 'Homescreen' });
+      navigation.navigate('UserTabs');
     }
   }, [isAuthenticated, navigation]);
 
@@ -52,6 +54,11 @@ const Login: React.FC = () => {
     setModalMessage(message);
     setModalVisible(true);
   };
+
+
+
+
+
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -66,49 +73,73 @@ const Login: React.FC = () => {
 
     setIsLoading(true);
 
-    try {
-      const auth = getAuth();
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
-      // Check if email is verified
-      if (!userCredential.user.emailVerified) {
-        await auth.signOut();
-        showModal(
-          'error', 
-          'Email Not Verified', 
-          'Please verify your email before logging in. Check your inbox for the verification link.'
-        );
-        return;
-      }
+     try {
+    const userCredential = await auth().signInWithEmailAndPassword(email, password);
+    
+    if (!userCredential.user.emailVerified) {
+      await auth().signOut();
+      showModal(
+        'error', 
+        'Email Not Verified', 
+        'Please verify your email before logging in. Check your inbox for the verification link.'
+      );
+      return;
+    }
 
-      const uid = userCredential.user.uid;
-      const userDoc = await firestore().collection('users').doc(uid).get();
+    const uid = userCredential.user.uid;
+    
+  
+    
+    
+    // Get user data
+    const userDoc = await firestore().collection('users').doc(uid).get();
 
-      if (!userDoc.exists) {
-        throw new Error('User data not found in database.');
-      }
+    if (!userDoc.exists) {
+      throw new Error('User data not found in database.');
+    }
+    if (user) {
+  await storeFCMToken(user.uid);
+}
+    const userData = userDoc.data();
 
-      const userDataFromDB = userDoc.data();
+    // Update user store
+    login({
+      uid,
+      email: userCredential.user.email || '',
+      fullName: userData?.fullName || '',
+      role: userData?.role || 'customer',
+    });
 
-      login({
-        uid,
-        email: userCredential.user.email || '',
-        fullName: userDataFromDB?.fullName || '',
-        role: userDataFromDB?.role || 'customer',
-      });
+    
+   
 
-    } catch (error: any) {
-      console.error('Login error:', error);
+  } catch (error: unknown) {
       let errorMessage = 'Login failed. Please try again.';
-
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email.';
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'The email address is invalid.';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many failed attempts. Please try again later.';
+      
+      if (error instanceof Error) {
+        console.error('Login error:', error.message);
+        
+        if ('code' in error) {
+          switch (error.code) {
+            case 'auth/user-not-found':
+              errorMessage = 'No account found with this email.';
+              break;
+            case 'auth/wrong-password':
+              errorMessage = 'Incorrect password.';
+              break;
+            case 'auth/invalid-email':
+              errorMessage = 'The email address is invalid.';
+              break;
+            case 'auth/too-many-requests':
+              errorMessage = 'Too many failed attempts. Please try again later.';
+              break;
+            case 'auth/invalid-credential':
+              errorMessage = 'Invalid login credentials.';
+              break;
+          }
+        }
+      } else {
+        console.error('Unknown error during login:', error);
       }
 
       showModal('error', 'Error', errorMessage);
@@ -228,4 +259,5 @@ const Login: React.FC = () => {
     </KeyboardAvoidingView>
   );
 };
+
 export default Login;
