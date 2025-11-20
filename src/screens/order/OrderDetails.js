@@ -27,7 +27,13 @@ const OrderDetails = ({ route, navigation }) => {
 
                     <Text style={styles.label}>Delivery Location:</Text>
                     <Text style={styles.value}>{order.location || 'Not specified'}</Text>
-
+                    
+                    {order.deliveryTimeResponse && (
+                        <>
+                            <Text style={styles.label}>Delivery ETA:</Text>
+                            <Text style={styles.value}>{order.deliveryTimeResponse}</Text>
+                        </>
+                    )}
                     <Text style={styles.label}>Phone:</Text>
                     <Text style={styles.value}>{order.phone || 'N/A'}</Text>
 

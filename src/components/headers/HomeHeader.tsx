@@ -21,25 +21,52 @@ interface HomeHeaderProps {
   onSearch: (query: string) => void;
 }
 
-const HomeHeader: React.FC<HomeHeaderProps> = ({ navigation, onProfilePress, onSearch }) => {
+const HomeHeader: React.FC<HomeHeaderProps> = ({
+  navigation,
+  onProfilePress,
+  onSearch
+}) => {
   const scaleAnim = new Animated.Value(0.8);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [role, setRole] = useState("");
 
-  // Fetch unread notifications count for current user
+  // 1️⃣ Get User Role (admin or user)
   useEffect(() => {
     const user = auth().currentUser;
     if (!user) return;
 
-    const unsubscribe = firestore()
-      .collection('notifications')
-      .where('recipientId', '==', user.uid)
-      .where('read', '==', false)
-      .onSnapshot(querySnapshot => {
-        setNotificationCount(querySnapshot.size);
+    const unsub = firestore()
+      .collection("users")
+      .doc(user.uid)
+      .onSnapshot(doc => {
+        if (doc.exists) {
+          setRole(doc.data()?.role || "user");
+        }
       });
 
-    return () => unsubscribe();
+    return unsub;
   }, []);
+
+  // 2️⃣ Fetch notifications based on role + userID
+  useEffect(() => {
+    const user = auth().currentUser;
+    if (!user || !role) return;
+
+    // Admin sees unread notifications for admins (new_order)
+    // Customer sees unread notifications for customers (status_update)
+    const recipientType = role === 'admin' ? 'admin' : 'customer';
+
+    const unsub = firestore()
+      .collection("notifications")
+      .where("recipientId", "==", user.uid)
+      .where("recipientType", "==", recipientType)
+      .where("read", "==", false)
+      .onSnapshot(q => {
+        setNotificationCount(q.size);
+      });
+
+    return unsub;
+  }, [role]);
 
   React.useEffect(() => {
     Animated.timing(scaleAnim, {
@@ -50,27 +77,31 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({ navigation, onProfilePress, onS
     }).start();
   }, []);
 
+  // 3️⃣ Mark all notifications as read on click
   const handleNotificationPress = async () => {
     const user = auth().currentUser;
-    if (!user) return;
+    if (!user || !role) return;
 
-    // Mark all unread notifications as read
-    const unreadNotifications = await firestore()
-      .collection('notifications')
-      .where('recipientId', '==', user.uid)
-      .where('read', '==', false)
+    const recipientType = role === 'admin' ? 'admin' : 'customer';
+
+    const unread = await firestore()
+      .collection("notifications")
+      .where("recipientId", "==", user.uid)
+      .where("recipientType", "==", recipientType)
+      .where("read", "==", false)
       .get();
 
     const batch = firestore().batch();
-    
-    unreadNotifications.forEach(doc => {
-      const notificationRef = firestore().collection('notifications').doc(doc.id);
-      batch.update(notificationRef, { read: true });
+
+    unread.forEach(doc => {
+      batch.update(doc.ref, { read: true });
     });
 
     await batch.commit();
+
     setNotificationCount(0);
-    navigation.navigate('NotificationScreen');
+
+    navigation.navigate("NotificationScreen");
   };
 
   return (
@@ -97,21 +128,22 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({ navigation, onProfilePress, onS
           placeholderTextColor="#FF9E5A"
           style={styles.searchInput}
           onChangeText={onSearch}
+          returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="none"
         />
+
         <TouchableOpacity style={styles.filterButton}>
           <MaterialIcons name="tune" size={20} color="#FF6D42" />
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity
-        style={styles.notificationButton}
-        onPress={handleNotificationPress}
-      >
+      <TouchableOpacity style={styles.notificationButton} onPress={handleNotificationPress}>
         <Ionicons name="notifications" size={24} color="white" />
         {notificationCount > 0 && (
           <View style={styles.notificationBadge}>
             <Text style={styles.badgeText}>
-              {notificationCount > 9 ? '9+' : notificationCount}
+              {notificationCount > 9 ? "9+" : notificationCount}
             </Text>
           </View>
         )}
@@ -126,24 +158,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 15,
+    paddingTop: 40,
+    paddingBottom: 20,
     width: '100%',
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
-    shadowColor: '#FF6D42',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
     elevation: 10,
   },
-  profileContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  profileButton: {
-    position: 'relative',
-  },
+  profileContainer: { flexDirection: 'row', alignItems: 'center' },
+  profileButton: { position: 'relative' },
   profileImage: {
     width: 42,
     height: 42,
@@ -171,10 +194,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     marginHorizontal: 15,
     height: 45,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
   },
   searchInput: {
@@ -182,19 +201,11 @@ const styles = StyleSheet.create({
     height: '100%',
     color: '#FF6D42',
     fontSize: 15,
-    fontFamily: 'Quicksand-Medium',
     marginHorizontal: 10,
   },
-  searchIcon: {
-    opacity: 0.8,
-  },
-  filterButton: {
-    padding: 5,
-  },
-  notificationButton: {
-    position: 'relative',
-    padding: 8,
-  },
+  searchIcon: { opacity: 0.8 },
+  filterButton: { padding: 5 },
+  notificationButton: { position: 'relative', padding: 8 },
   notificationBadge: {
     position: 'absolute',
     top: 0,
@@ -207,17 +218,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: 'white',
-    shadowColor: 'red',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 3,
     elevation: 3,
   },
-  badgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
+  badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
 });
 
 export default HomeHeader;

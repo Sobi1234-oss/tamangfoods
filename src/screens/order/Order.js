@@ -67,23 +67,111 @@ const Order = ({ navigation }) => {
 
  const handleMarkCompleted = async (orderId, order) => {
   try {
-    // Update order status
+    // Fetch an admin user's location (assumes admin document contains `location`)
+    const adminSnapshot = await firestore().collection('users').where('role', '==', 'admin').limit(1).get();
+    let adminLocation = null;
+    if (!adminSnapshot.empty) {
+      const adminDoc = adminSnapshot.docs[0];
+      adminLocation = adminDoc.data()?.location || null;
+    }
+
+    // If adminLocation is not set in Firestore, use the provided default admin coordinates
+    // Provided admin coordinates: 33.65278267381303, 73.06628055562464
+    if (!adminLocation) {
+      adminLocation = { latitude: 33.65278267381303, longitude: 73.06628055562464 };
+    }
+
+    // Helper: parse location formats into { latitude, longitude }
+    const parseLocation = (loc) => {
+      if (!loc) { return null; }
+      if (typeof loc === 'object' && loc.latitude != null && loc.longitude != null) {
+        return { latitude: Number(loc.latitude), longitude: Number(loc.longitude) };
+      }
+      if (typeof loc === 'string') {
+        // Try comma-separated "lat,lng"
+        const csvMatch = loc.match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
+        if (csvMatch) {
+          return { latitude: Number(csvMatch[1]), longitude: Number(csvMatch[2]) };
+        }
+        // Try "Lat: x, Lng: y" or similar
+        const nums = loc.match(/-?\d+\.?\d*/g);
+        if (nums && nums.length >= 2) {
+          return { latitude: Number(nums[0]), longitude: Number(nums[1]) };
+        }
+      }
+      return null;
+    };
+
+    const adminCoords = parseLocation(adminLocation);
+    const orderCoords = parseLocation(order.locationCoords || order.location);
+
+    if (!orderCoords) {
+      Alert.alert('ETA Notice', 'Order location does not contain coordinates; using default ETA (30 minutes). Ask customer to use "Use My Current Location" for accurate ETA.');
+    }
+
+    // Haversine distance (km)
+    const haversineKm = (a, b) => {
+      const toRad = v => (v * Math.PI) / 180;
+      const R = 6371; // Earth's radius in km
+      const dLat = toRad(b.latitude - a.latitude);
+      const dLon = toRad(b.longitude - a.longitude);
+      const lat1 = toRad(a.latitude);
+      const lat2 = toRad(b.latitude);
+      const sinDLat = Math.sin(dLat / 2);
+      const sinDLon = Math.sin(dLon / 2);
+      const aa = sinDLat * sinDLat + sinDLon * sinDLon * Math.cos(lat1) * Math.cos(lat2);
+      const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+      return R * c;
+    };
+
+    // Estimate delivery time in minutes using average speed (km/h)
+    let etaMinutes = null;
+    if (adminCoords && orderCoords) {
+      try {
+        const distanceKm = haversineKm(adminCoords, orderCoords);
+        const avgSpeedKmh = 25; // reasonable city average (25 km/h). Tune as needed.
+        const minutes = (distanceKm / avgSpeedKmh) * 60;
+        // Round to nearest 5 minutes and enforce min 10 minutes
+        const rounded = Math.max(10, Math.round(minutes / 5) * 5);
+        etaMinutes = rounded;
+        console.log('[ETA] distanceKm=', distanceKm, 'minutes(raw)=', minutes, 'etaMinutes=', etaMinutes);
+      } catch (err) {
+        console.warn('ETA calculation failed, using fallback', err);
+      }
+    } else {
+      if (!adminCoords) {
+        console.log('[ETA] adminCoords missing, adminCoords=', adminCoords);
+      }
+      if (!orderCoords) {
+        console.log('[ETA] orderCoords missing or unparsable, order.location=', order.location);
+      }
+    }
+
+    // Fallback default ETA
+    if (!etaMinutes) { etaMinutes = 30; }
+
+
+    const deliveryTimeText = `Estimated delivery time: approx ${etaMinutes} minutes`;
+
+    // Update order status to 'completed' and set deliveryTimeResponse with ETA
     await firestore().collection('orders').doc(orderId).update({
       status: 'completed',
-      deliveryTimeResponse: 'Your order will arrive in 30 minutes',
+      deliveryTimeResponse: deliveryTimeText,
     });
 
-    // Send notification to customer
+    // Send notification to customer containing ETA
+    const productNames = order.items?.map(item => item.name).join(', ') || 'your items';
     await sendOrderNotification({
       customerId: order.customerId,
       orderId: orderId,
       type: 'status_update',
       status: 'completed',
-      message: `Your order #${orderId.substring(0, 6)} has been completed`,
-      read: false
+      productName: productNames,
+      message: `Your ${productNames} order has been prepared. ${deliveryTimeText}. Delivered!`,
+      read: false,
     });
 
-    Alert.alert('Success', 'Order marked as completed and customer notified.');
+    Alert.alert('Success', `Order marked complete. ${deliveryTimeText}. Customer notified.`);
   } catch (error) {
     console.error('Error updating status: ', error);
     Alert.alert('Error', 'Failed to update order status.');
@@ -132,14 +220,18 @@ const Order = ({ navigation }) => {
       <Text style={styles.orderDate}>{item.createdAt?.toLocaleString() || 'N/A'}</Text>
       <Text style={styles.orderTotal}>Rs {item.totalPrice?.toFixed(2) || '0.00'}</Text>
 
+      {item.deliveryTimeResponse ? (
+        <Text style={styles.deliveryEta}>{item.deliveryTimeResponse}</Text>
+      ) : null}
+
       {/* Admin: Mark Completed */}
        
     {userRole === 'admin' && item.status !== 'completed' && (
       <TouchableOpacity
-        onPress={() => handleMarkCompleted(item.id, item)}  // Pass the full order object
+        onPress={() => handleMarkCompleted(item.id, item)}
         style={styles.acceptButton}
       >
-        <Text style={styles.acceptText}>Mark as Completed</Text>
+        <Text style={styles.acceptText}>Mark Complete & Show Time</Text>
       </TouchableOpacity>
     )}
 
@@ -205,6 +297,8 @@ const styles = StyleSheet.create({
   orderCustomer: { color: '#555', marginBottom: 4 },
   orderDate: { color: '#777', fontSize: 12, marginBottom: 4 },
   orderTotal: { fontWeight: 'bold', color: '#2e7d32' },
+
+  deliveryEta: { color: '#FF6D42', marginTop: 6, fontSize: 13, fontWeight: '600' },
 
   acceptButton: {
     marginTop: 10,

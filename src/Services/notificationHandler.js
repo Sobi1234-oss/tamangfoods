@@ -1,16 +1,14 @@
+// Services/notificationsHandler.ts
 import messaging from '@react-native-firebase/messaging';
-import auth from '@react-native-firebase/auth'; // Add this import
+import auth from '@react-native-firebase/auth';
 import { Alert } from 'react-native';
-import { NavigationContainerRef } from '@react-navigation/native';
-import { storeFCMToken } from '../Services/notificationService';
+import { storeFCMToken } from './notificationService';
 
-let navigationRef;
-
+let navigationRef = null;
 export const setNavigationRef = (ref) => {
   navigationRef = ref;
 };
 
-// Request notification permission
 const requestNotificationPermission = async () => {
   try {
     const authStatus = await messaging().requestPermission();
@@ -18,21 +16,16 @@ const requestNotificationPermission = async () => {
       authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
       authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
-    if (enabled) {
-      console.log('Authorization status:', authStatus);
-      return true;
-    }
-    return false;
+    return enabled;
   } catch (error) {
-    console.error('Permission request error:', error);
+    console.error('requestNotificationPermission error:', error);
     return false;
   }
 };
 
-// Handle foreground messages
 export const setupForegroundHandler = () => {
-  messaging().onMessage(async (remoteMessage) => {
-    console.log('Foreground notification:', remoteMessage);
+  messaging().onMessage(async remoteMessage => {
+    console.log('Foreground message received:', remoteMessage);
     Alert.alert(
       remoteMessage.notification?.title || 'New Notification',
       remoteMessage.notification?.body || 'You have a new message'
@@ -40,42 +33,64 @@ export const setupForegroundHandler = () => {
   });
 };
 
-// Handle background messages
 export const setupBackgroundHandler = () => {
-  messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-    console.log('Background notification:', remoteMessage);
+  messaging().setBackgroundMessageHandler(async remoteMessage => {
+    console.log('Background message:', remoteMessage);
+    // background handling (no UI here)
   });
 };
 
-// Handle notification opens
 export const setupNotificationOpenedHandler = () => {
   messaging().onNotificationOpenedApp((remoteMessage) => {
-    if (remoteMessage.data && remoteMessage.data.type === 'new_order') {
-      navigationRef?.navigate('AdminOrders');
+    console.log('Notification opened from background state:', remoteMessage);
+    try {
+      const type = remoteMessage?.data?.type;
+      if (type === 'new_order') {
+        navigationRef?.navigate('AdminOrders');
+      } else if (type === 'status_update') {
+        navigationRef?.navigate('OrderDetails', { orderId: remoteMessage?.data?.orderId });
+      } else {
+        // fallback
+        navigationRef?.navigate('NotificationScreen');
+      }
+    } catch (err) {
+      console.error('onNotificationOpenedApp nav error:', err);
     }
   });
 
-  messaging()
-    .getInitialNotification()
-    .then((remoteMessage) => {
-      if (remoteMessage && remoteMessage.data.type === 'new_order') {
+  messaging().getInitialNotification().then(remoteMessage => {
+    if (remoteMessage) {
+      console.log('Opened app from quit state via notification:', remoteMessage);
+      const type = remoteMessage?.data?.type;
+      if (type === 'new_order') {
         navigationRef?.navigate('AdminOrders');
+      } else if (type === 'status_update') {
+        navigationRef?.navigate('OrderDetails', { orderId: remoteMessage?.data?.orderId });
+      } else {
+        navigationRef?.navigate('NotificationScreen');
       }
-    });
+    }
+  }).catch(err => console.error('getInitialNotification error:', err));
 };
 
-// Initialize all notification handlers
 export const initializeNotifications = () => {
-  setupForegroundHandler();
-  setupBackgroundHandler();
-  setupNotificationOpenedHandler();
+  // request permission then setup handlers
+  requestNotificationPermission().then(hasPerm => {
+    if (hasPerm) {
+      setupForegroundHandler();
+      setupBackgroundHandler();
+      setupNotificationOpenedHandler();
+    } else {
+      console.warn('User did not grant notification permission');
+    }
+  });
 
-  // Store FCM token when user logs in
-  auth().onAuthStateChanged((user) => {
+  // save FCM token on auth change
+  auth().onAuthStateChanged(user => {
     if (user) {
-      requestNotificationPermission().then((hasPermission) => {
-        if (hasPermission) {
-          storeFCMToken(user.uid);
+      requestNotificationPermission().then(async (hasPerm) => {
+        if (hasPerm) {
+          await storeFCMToken(user.uid);
         }
       });
     }

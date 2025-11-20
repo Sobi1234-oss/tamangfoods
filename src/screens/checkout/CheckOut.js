@@ -1,3 +1,4 @@
+// Checkout.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -10,6 +11,7 @@ import {
   Platform,
   ScrollView,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import auth from '@react-native-firebase/auth';
@@ -20,6 +22,10 @@ import { sendOrderNotification } from '../../Services/notificationService';
 
 const DELIVERY_CHARGES = 100;
 
+
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 15000; // 15 seconds
+
 const Checkout = ({ navigation }) => {
   const [coords, setCoords] = useState(null);
   const [manualLocation, setManualLocation] = useState('');
@@ -27,9 +33,15 @@ const Checkout = ({ navigation }) => {
   const { cartItems, getTotalPrice, clearCart } = useCartStore();
   const [phoneError, setPhoneError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [locationError, setLocationError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [retryTimer, setRetryTimer] = useState(null);
 
   const requestLocationPermission = async () => {
-    if (Platform.OS === 'ios') return true;
+    if (Platform.OS === 'ios') {
+      return true;
+    }
     try {
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
@@ -41,28 +53,112 @@ const Checkout = ({ navigation }) => {
     }
   };
 
+
   const handleGetLocation = async () => {
-    const hasPermission = await requestLocationPermission();
-    if (!hasPermission) {
-      Alert.alert('Permission Denied', 'Please allow location access.');
+    if (retryCount >= MAX_RETRIES) {
+      setLocationError('Maximum location attempts reached. Please enter your address manually.');
+      setIsGettingLocation(false);
       return;
     }
+    const hasPermission = await requestLocationPermission();
+    if (!hasPermission) {
+      setLocationError('Permission Denied. Please allow location access in your device settings.');
+      setIsGettingLocation(false);
+      return;
+    }
+    setIsGettingLocation(true);
+    setLocationError(null);
+    try {
+      await new Promise((resolve, reject) => {
+        Geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            setCoords({ latitude, longitude });
+            setIsGettingLocation(false);
+            setRetryCount(0);
+            if (retryTimer) { clearTimeout(retryTimer); }
+            resolve(position);
+          },
+          (error) => {
+            reject(error);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: RETRY_DELAY,
+            maximumAge: 0,
+          }
+        );
+      });
+    } catch (error) {
+      setIsGettingLocation(false);
+      setLocationError(error.message || 'Failed to get location');
+      if (retryCount < MAX_RETRIES - 1) {
+        // Schedule next retry after 15s
+        const timer = setTimeout(() => {
+          setRetryCount((prev) => prev + 1);
+          handleGetLocation();
+        }, RETRY_DELAY);
+        setRetryTimer(timer);
+      } else {
+        setRetryCount(MAX_RETRIES);
+      }
+    }
+  };
 
-    Geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setCoords({ latitude, longitude });
-      },
-      (error) => {
-        console.log(error);
-        Alert.alert('Location Error', error.message);
-      },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 10000 }
-    );
+  // Geocode manual address to coordinates using OpenStreetMap Nominatim (free, no API key required)
+  const geocodeAddress = async (address) => {
+    try {
+      // Use fetch to call Nominatim; do not show UI Alerts here — surface errors via `setLocationError`.
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
+        { timeout: 10000 }
+      );
+
+      if (!response.ok) {
+        console.error('Geocoding service responded with status', response.status);
+        setLocationError('Geocoding service error. Please try GPS or enter coordinates as "lat,lng".');
+        return null;
+      }
+
+      const results = await response.json();
+      if (!results || results.length === 0) {
+        setLocationError('Address not found. Please try a different address or use GPS.');
+        return null;
+      }
+
+      const { lat, lon } = results[0];
+      const geocodedCoords = { latitude: Number(lat), longitude: Number(lon) };
+      return geocodedCoords;
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      setLocationError('Geocoding failed. Use GPS or enter coordinates as "lat,lng".');
+      return null;
+    }
+  };
+
+  const parseCoordinatesFromString = (text) => {
+    // Accept formats like "12.3456, 78.9012" or "12.3456 78.9012"
+    const cleaned = text.trim();
+    const commaParts = cleaned.split(',').map(p => p.trim());
+    let lat, lng;
+    if (commaParts.length === 2) {
+      lat = Number(commaParts[0]);
+      lng = Number(commaParts[1]);
+    } else {
+      const spaceParts = cleaned.split(/\s+/);
+      if (spaceParts.length === 2) {
+        lat = Number(spaceParts[0]);
+        lng = Number(spaceParts[1]);
+      }
+    }
+    if (!isNaN(lat) && !isNaN(lng)) {
+      return { latitude: lat, longitude: lng };
+    }
+    return null;
   };
 
   const handleSubmit = async () => {
-    if (isSubmitting) return;
+    if (isSubmitting) { return; }
     setIsSubmitting(true);
 
     const user = auth().currentUser;
@@ -93,6 +189,8 @@ const Checkout = ({ navigation }) => {
       customerName: user.displayName || 'Customer',
       phone: phone.trim(),
       location,
+      // store coordinates separately when available to allow accurate ETA calculations
+      locationCoords: coords ? { latitude: coords.latitude, longitude: coords.longitude } : null,
       paymentMethod: 'Cash on Delivery',
       items: cartItems.map(item => ({
         name: item.name || '',
@@ -117,21 +215,43 @@ const Checkout = ({ navigation }) => {
       // Update the order with the generated ID
       await orderRef.update({ orderId });
 
+      // Build notification object (send to admin)
       const notificationData = {
         customerId: user.uid,
         customerName: user.displayName || 'Customer',
         orderId: orderId,
         grandTotal: getTotalPrice() + DELIVERY_CHARGES,
         status: 'pending',
-        type: 'new_order',
-        read: false,
+        type: 'new_order', // IMPORTANT: handler treats new_order as admin-targeted
+        // include any extra fields you want the cloud function or admin UI to use
       };
 
-      await sendOrderNotification(notificationData);
+      const notificationId = await sendOrderNotification(notificationData);
+      console.log('Notification created with id:', notificationId);
+
+      // Notify the customer that their order was submitted successfully
+      try {
+        const productNames = cartItems.map(item => item.name).join(', ') || 'your items';
+        const customerNotification = {
+          customerId: user.uid,
+          customerName: user.displayName || 'Customer',
+          orderId: orderId,
+          grandTotal: getTotalPrice() + DELIVERY_CHARGES,
+          status: 'pending',
+          type: 'order_submitted',
+          productName: productNames,
+          message: `Your ${productNames} order has been submitted. Please wait for admin response.`,
+        };
+
+        await sendOrderNotification(customerNotification);
+      } catch (err) {
+        console.warn('Failed to create customer submission notification', err);
+      }
 
       clearCart();
       setIsSubmitting(false);
       Alert.alert('Success', 'Order placed successfully!');
+
       navigation.navigate('MainApp', {
         screen: 'UserTabs',
         params: {
@@ -146,18 +266,48 @@ const Checkout = ({ navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior="padding">
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
       <Header title="Dashboard" showBack={true} />
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView contentContainerStyle={styles.bodyWithBottom} keyboardShouldPersistTaps="handled">
         <Text style={styles.heading}>Set location</Text>
 
-        <TouchableOpacity style={styles.mapButton} onPress={handleGetLocation}>
-          <Text style={styles.mapButtonText}>Use My Current Location</Text>
-        </TouchableOpacity>
+        {isGettingLocation ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#FF6B3C" />
+            <Text style={styles.loadingText}>Getting your location...</Text>
+          </View>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.mapButton, locationError && styles.mapButtonError]}
+              onPress={handleGetLocation}
+              disabled={isGettingLocation}
+            >
+              <Text style={styles.mapButtonText}>Use My Current Location</Text>
+            </TouchableOpacity>
+
+            {locationError && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorMessage}>{locationError}</Text>
+                {retryCount < MAX_RETRIES && (
+                  <TouchableOpacity
+                    style={styles.retryButton}
+                    onPress={() => {
+                      setRetryCount(retryCount + 1);
+                      handleGetLocation();
+                    }}
+                  >
+                    <Text style={styles.retryButtonText}>Retry ({retryCount + 1}/{MAX_RETRIES})</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </>
+        )}
 
         {coords && (
           <Text style={styles.locationText}>
-            📍 Latitude: {coords.latitude} | Longitude: {coords.longitude}
+            ✓ Location set
           </Text>
         )}
 
@@ -168,6 +318,32 @@ const Checkout = ({ navigation }) => {
           style={styles.input}
           placeholderTextColor="#aaa"
         />
+
+        {manualLocation.trim() && !coords && (
+          <TouchableOpacity
+            style={styles.geocodeButton}
+            onPress={async () => {
+              // First try to parse direct "lat,lng" entry
+              const parsed = parseCoordinatesFromString(manualLocation);
+              if (parsed) {
+                setCoords(parsed);
+                setLocationError(null);
+                setRetryCount(0);
+                if (retryTimer) { clearTimeout(retryTimer); }
+                return;
+              }
+              const geocoded = await geocodeAddress(manualLocation);
+              if (geocoded) {
+                setCoords(geocoded);
+                setLocationError(null);
+                setRetryCount(0);
+                if (retryTimer) { clearTimeout(retryTimer); }
+              }
+            }}
+          >
+            <Text style={styles.geocodeButtonText}>Convert Address to Coordinates</Text>
+          </TouchableOpacity>
+        )}
 
         <TextInput
           placeholder="Phone Number"
@@ -199,8 +375,8 @@ const Checkout = ({ navigation }) => {
           </Text>
         </View>
 
-        <TouchableOpacity 
-          style={[styles.submitButton, isSubmitting && styles.disabledButton]} 
+        <TouchableOpacity
+          style={[styles.submitButton, isSubmitting && styles.disabledButton]}
           onPress={handleSubmit}
           disabled={isSubmitting}
         >
@@ -215,13 +391,14 @@ const Checkout = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  body: { padding: 20 },
+  body: { padding: 12 },
+  bodyWithBottom: { padding: 12, paddingBottom: 130 },
   heading: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 20,
     textAlign: 'left',
-    color: '#2d9fd3ff'
+    color: '#2d9fd3ff',
   },
   mapButton: {
     backgroundColor: '#FF6B6B',
@@ -240,9 +417,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 15,
-    color: "black"
+    padding: 10,
+    marginBottom: 10,
+    color: 'black',
   },
   summary: {
     marginTop: 20,
@@ -263,9 +440,10 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: '#FF6B3C',
-    padding: 16,
+    padding: 14,
     borderRadius: 10,
-    marginTop: 30,
+    marginTop: 20,
+    marginBottom: 24,
     alignItems: 'center',
   },
   submitButtonText: {
@@ -274,13 +452,65 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   errorText: {
-  color: 'red',
-  marginBottom: 10,
-  fontSize: 13,
-},
-inputError: {
-  borderColor: 'red',
-},
+    color: 'red',
+    marginBottom: 10,
+    fontSize: 13,
+  },
+  inputError: {
+    borderColor: 'red',
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  geocodeButton: {
+    backgroundColor: '#2d9fd3',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  geocodeButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#666',
+  },
+  errorContainer: {
+    backgroundColor: '#ffebee',
+    borderRadius: 8,
+    padding: 12,
+    marginVertical: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: '#f44336',
+  },
+  errorMessage: {
+    color: '#c62828',
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  retryButton: {
+    backgroundColor: '#f44336',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  mapButtonError: {
+    opacity: 0.7,
+  },
 });
 
 export default Checkout;

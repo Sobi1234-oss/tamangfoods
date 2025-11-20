@@ -90,7 +90,8 @@ const NotificationsScreen = ({ navigation }) => {
 
     switch (notification.type) {
       case 'status_update':
-        return `Your order #${notification.orderId.substring(0, 6)} has been ${notification.status}`;
+        const productName = notification.productName ? `${notification.productName} ` : '';
+        return `Your ${productName}order #${notification.orderId.substring(0, 6)} has been completed`;
       case 'delivery_update':
         return `Your order is ${notification.deliveryStatus}`;
       default:

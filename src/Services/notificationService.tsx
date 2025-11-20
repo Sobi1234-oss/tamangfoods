@@ -1,7 +1,6 @@
 // Services/notificationService.ts
 import firestore from '@react-native-firebase/firestore';
 import messaging from '@react-native-firebase/messaging';
-import auth from '@react-native-firebase/auth';
 
 type NotificationInput = {
   customerId?: string;
@@ -31,22 +30,9 @@ export const sendOrderNotification = async (notificationData: NotificationInput)
     const adminId = adminDoc.id;
 
     // Determine recipient
-    let recipientId = null;
-    let recipientType = null;
-
-    // If explicit recipient provided, use it
-    if (notificationData.recipientId && notificationData.recipientType) {
-      recipientId = notificationData.recipientId;
-      recipientType = notificationData.recipientType;
-    } else if (notificationData.type === 'status_update' || notificationData.type === 'order_submitted') {
-      // Notifications that should go to the customer
-      recipientId = notificationData.customerId;
-      recipientType = 'customer';
-    } else {
-      // By default send to admin
-      recipientId = adminId;
-      recipientType = 'admin';
-    }
+    const isStatusUpdate = notificationData.type === 'status_update';
+    const recipientId = isStatusUpdate ? notificationData.customerId : adminId;
+    const recipientType = isStatusUpdate ? 'customer' : 'admin';
 
     // Build notification object
     const notificationDoc = {

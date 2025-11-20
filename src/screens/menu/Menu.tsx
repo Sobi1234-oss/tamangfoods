@@ -103,7 +103,7 @@ const Menu = ({ navigation }: { navigation: any }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="Menu" showBack={true} onBackPress={() => navigation.navigate('MainApp', { screen: 'Homescreen' })} />
+      <Header title="Menu" showBack={true}  onBackPress={() => navigation.navigate('MainApp', { screen: 'Homescreen' })} />
       <View style={styles.header}>
         <Text style={styles.title}>Our Menu</Text>
         <Text style={styles.subtitle}>Browse our delicious offerings</Text>

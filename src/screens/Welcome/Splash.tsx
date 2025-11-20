@@ -9,7 +9,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 
-const Splash = ({ navigation }) => {
+const Splash: React.FC<{ navigation: any }> = ({ navigation }) => {
   return (
     <LinearGradient
       colors={['#FF6D42', '#FF9E5A']}

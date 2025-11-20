@@ -1,10 +1,12 @@
-import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import useUserStore from '../components/store/UserStore';
 import { RootStackParamList } from './Types'; // Import your root param list
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
 
 // Screens
 import Homescreen from '../screens/home/Homescreen';
@@ -42,6 +44,31 @@ const UserTabNavigator: React.FC = () => {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const user = useUserStore(state => state.user);
   const isAdmin = user?.role === 'admin';
+  const [newOrderCount, setNewOrderCount] = useState(0);
+
+  // Fetch new orders count for admin
+  useEffect(() => {
+    if (!isAdmin) {
+      setNewOrderCount(0);
+      return;
+    }
+
+    const currentUser = auth().currentUser;
+    if (!currentUser) {
+      return;
+    }
+
+    const unsubscribe = firestore()
+      .collection('orders')
+      .where('status', '!=', 'completed')
+      .onSnapshot(snapshot => {
+        setNewOrderCount(snapshot.size);
+      }, error => {
+        console.error('Error fetching order count:', error);
+      });
+
+    return () => unsubscribe();
+  }, [isAdmin]);
 
   return (
     <Tab.Navigator
@@ -123,8 +150,12 @@ const UserTabNavigator: React.FC = () => {
     tabBarIcon: ({ color }) => (
       <View style={styles.tabIconContainer}>
        <Ionicons name="receipt-outline" size={24} color={color} />
-        {/* Green dot indicator */}
-        <View style={styles.greenDot} />
+        {/* Badge indicator - show order count for admin when there are new orders */}
+        {isAdmin && newOrderCount > 0 && (
+          <View style={styles.badgeDot}>
+            <Text style={styles.badgeText}>{newOrderCount > 9 ? '9+' : newOrderCount}</Text>
+          </View>
+        )}
       </View>
     ),
   }}
@@ -159,14 +190,38 @@ const styles = StyleSheet.create({
     top: -5,
     marginBottom: 0,
   },
-    greenDot: {
+  greenDot: {
     position: 'absolute',
     right: -5,
     top: -3,
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#90EE90', // Light green color
+    backgroundColor: '#90EE90',
+  },
+  badgeDot: {
+    position: 'absolute',
+    right: -8,
+    top: -8,
+    backgroundColor: '#FF3B30',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+    elevation: 5,
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
  
 });

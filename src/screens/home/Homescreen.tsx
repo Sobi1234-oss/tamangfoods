@@ -156,12 +156,7 @@ const Homescreen = () => {
     );
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (!query) {
-      setSelectedCategory(null);
-    }
-  };
+  
 
   const handleCategoryPress = (categoryId: string) => {
     setSelectedCategory(prev => prev === categoryId ? null : categoryId);
@@ -273,7 +268,22 @@ const Homescreen = () => {
       </LinearGradient>
     );
   }
+  const handleSearch = (query: string) => {
+  setSearchQuery(query);
 
+  if (!query.trim()) {
+    setDisplayProducts(allProducts);
+    setSelectedCategory("all");
+    return;
+  }
+
+  const filtered = allProducts.filter(product =>
+    product.name.toLowerCase().includes(query.toLowerCase())
+  );
+
+  setDisplayProducts(filtered);
+  setSelectedCategory("all");
+};
    return (
     <View style={styles.container}>
       <HomeHeader
